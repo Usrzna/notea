@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Notéa</title>
+<meta name="description" content="Notéa aide les élèves dys et TDAH à comprendre, apprendre et retenir leurs cours. Conçu pour les dys, utile à tous.">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#F6F7F9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#11141A" media="(prefers-color-scheme: dark)">
+<script>try{var t=localStorage.getItem("notea-theme");if(t&&t!=="auto")document.documentElement.dataset.theme=t;var f=localStorage.getItem("notea-police");if(f)document.documentElement.dataset.font=f}catch(e){}</script>
+<link rel="stylesheet" href="css/notea.css">
+</head>
+<body>
+
+<!-- Pictogrammes : une seule famille, même grille, même épaisseur -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-jour" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></symbol>
+  <symbol id="i-cours" viewBox="0 0 24 24"><path d="M5 4.5h10a3 3 0 0 1 3 3V20H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h10"/></symbol>
+  <symbol id="i-lire" viewBox="0 0 24 24"><path d="M4 10v4h3l5 4V6l-5 4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11"/></symbol>
+  <symbol id="i-page" viewBox="0 0 24 24"><path d="M7 3.5h7l4 4v13H7z"/><path d="M14 3.5v4h4"/></symbol>
+  <symbol id="i-carte" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.5"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="M10 10.4 6.6 7.4M14 10.4l3.4-3M10 13.6l-3.4 3M14 13.6l3.4 3"/></symbol>
+  <symbol id="i-discu" viewBox="0 0 24 24"><path d="M5 5.5h14A1.5 1.5 0 0 1 20.5 7v8a1.5 1.5 0 0 1-1.5 1.5h-7L7.5 20v-3.5H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z"/></symbol>
+  <symbol id="i-carnet" viewBox="0 0 24 24"><rect x="6" y="3.5" width="12" height="17" rx="2"/><path d="M9.5 8h5M9.5 12h5M4 7.5h2M4 12h2M4 16.5h2"/></symbol>
+  <symbol id="i-quiz" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.2 2.4 2.4 4.6-5"/></symbol>
+  <symbol id="i-examen" viewBox="0 0 24 24"><rect x="6" y="5" width="12" height="15.5" rx="2"/><path d="M9.5 5V3.8h5V5M9.5 11h5M9.5 15h3"/></symbol>
+  <symbol id="i-planning" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></symbol>
+  <symbol id="i-imprimer" viewBox="0 0 24 24"><path d="M7.5 8.5v-5h9v5"/><rect x="4" y="8.5" width="16" height="8" rx="2"/><path d="M7.5 14h9v6.5h-9z"/></symbol>
+  <symbol id="i-reglages" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/></symbol>
+  <symbol id="i-logo" viewBox="0 0 48 48"><rect x="5" y="15" width="26" height="25" rx="4.5" fill="#3F52BE" stroke="none" transform="rotate(-14 18 27.5)"/><rect x="9" y="12.5" width="26" height="26" rx="4.5" fill="#9AA8FF" stroke="none" transform="rotate(-9 22 25.5)"/><path d="M17 9.5h17.5A4.500 4.500 0 0 1 39 14v15.500l-8 8H17A4.500 4.500 0 0 1 12.500 33V14A4.500 4.500 0 0 1 17 9.500z" fill="#FFFFFF" stroke="#DDE1E8" stroke-width=".8" transform="rotate(-5 26 23.5)"/><g transform="rotate(-5 26 23.5)" stroke-linecap="round" stroke-width="3" fill="none"><path d="M18.500 17h14" stroke="#9AA8FF"/><path d="M18.500 23h13" stroke="#9AA8FF"/><path d="M18.500 29h10" stroke="#E6B45F"/></g></symbol>
+</svg>
+
+<!-- Niveau 2 : navigation en verre (iPad, Mac) -->
+<nav class="side" aria-label="Navigation">
+  <div class="brand"><svg aria-hidden="true"><use href="#i-logo"/></svg>Notéa</div>
+  <button data-tab="jour"><svg class="ic" aria-hidden="true"><use href="#i-jour"/></svg>Aujourd'hui</button>
+  <div class="grp">Apprendre</div>
+  <button data-tab="notions"><svg class="ic" aria-hidden="true"><use href="#i-cours"/></svg>Mes cours</button>
+  <button data-tab="lecture"><svg class="ic" aria-hidden="true"><use href="#i-lire"/></svg>Lire et écouter</button>
+  <button data-tab="blanche"><svg class="ic" aria-hidden="true"><use href="#i-page"/></svg>Feuille blanche</button>
+  <button data-tab="carte"><svg class="ic" aria-hidden="true"><use href="#i-carte"/></svg>Carte mentale</button>
+  <button data-tab="discu"><svg class="ic" aria-hidden="true"><use href="#i-discu"/></svg>Discussion</button>
+  <button data-tab="carnet"><svg class="ic" aria-hidden="true"><use href="#i-carnet"/></svg>Carnet de mots</button>
+  <div class="grp">Se tester</div>
+  <button data-tab="jeux"><svg class="ic" aria-hidden="true"><use href="#i-quiz"/></svg>Quiz et jeux</button>
+  <button data-tab="examen"><svg class="ic" aria-hidden="true"><use href="#i-examen"/></svg>Examen blanc</button>
+  <div class="grp">S'organiser</div>
+  <button data-tab="planning"><svg class="ic" aria-hidden="true"><use href="#i-planning"/></svg>Mon planning</button>
+  <button data-tab="imprimer"><svg class="ic" aria-hidden="true"><use href="#i-imprimer"/></svg>Imprimer</button>
+  <div class="foot"><button data-tab="reglages"><svg class="ic" aria-hidden="true"><use href="#i-reglages"/></svg>Réglages</button></div>
+</nav>
+
+<main class="main">
+  <header class="top">
+    <div class="brand"><svg aria-hidden="true"><use href="#i-logo"/></svg>Notéa</div>
+    <div><span class="muted" id="top-date"></span><h1 id="page-t">Aujourd'hui</h1></div>
+    <div class="xp" id="xp" title="Ta progression"><img src="mascotte.png" alt="" width="34" height="34"><b id="xp-lvl">Niv. 1</b><span class="xpbar"><i id="xp-bar"></i></span><span class="muted" id="xp-n">0 XP</span><span class="plume" id="xp-pl">🪶 0</span></div>
+  </header>
+  <div class="subnav" id="subnav" role="navigation" aria-label="Dans cette partie"></div>
+  <div id="note" class="msg" role="status" hidden></div>
+
+  <!-- ===== Aujourd'hui ===== -->
+  <section id="tab-jour" class="stack">
+    <div class="card hero" id="accueil">
+      <span class="eyebrow">Ta révision du jour</span>
+      <p class="big" id="jour-titre">…</p>
+      <p id="jour-sous"></p>
+      <div class="row" id="jour-go"><button class="primary" id="go">Commencer</button><span class="muted" id="jour-suite"></span></div>
+      <div class="row" id="vide" hidden><button class="primary" id="vide-imp">Importer un cours</button></div>
+    </div>
+
+    <div id="pref" class="muted" hidden></div>
+    <div class="tiles" id="tuiles"></div>
+
+    <div id="seance" class="stack" hidden>
+      <div class="row" style="justify-content:space-between"><span class="muted" id="pos">1 sur 7</span><button id="quit">Arrêter là</button></div>
+      <div class="bar"><i id="prog"></i></div>
+      <div class="qcard">
+        <div class="src" id="q-src"></div>
+        <p class="qtext" id="q-text"></p>
+        <div class="row"><button class="primary" id="voir">Voir la réponse <kbd>Espace</kbd></button><button id="lire" aria-label="Lire à voix haute">🔊 Écouter <kbd>L</kbd></button></div>
+        <div id="noter" class="stack" style="gap:12px" hidden>
+          <p class="muted">Tu t'en souvenais ?</p>
+          <div class="grades">
+            <button class="g1" data-g="1">✗ Raté <small>revient tout de suite <kbd>1</kbd></small></button>
+            <button class="g2" data-g="2">Avec effort <small id="g2-when">demain <kbd>2</kbd></small></button>
+            <button class="g3" data-g="3">✓ Facile <small id="g3-when">dans 3 jours <kbd>3</kbd></small></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="bilan" hidden>
+      <h2>Bravo, c'est fini pour aujourd'hui</h2>
+      <p id="bilan-t"></p>
+      <div class="row"><button class="primary" id="bilan-ok">Revenir</button></div>
+    </div>
+  </section>
+
+  <!-- ===== Mes cours ===== -->
+  <section id="tab-notions" class="stack" hidden>
+    <div class="card" id="imp-card">
+      <h2>Importer un cours</h2>
+      <p class="muted">Une photo (du cours, d'un polycopié ou du tableau), un PowerPoint, un fichier Word, PDF ou texte, ou un texte copié. Le fichier est lu sur cet appareil.</p>
+      <div class="row"><label for="imp-mat"><b>Matière</b></label><input type="text" id="imp-mat" list="mat-list" placeholder="Par exemple : Droit civil" style="flex:1 1 220px"><datalist id="mat-list"></datalist></div>
+      <div class="row">
+        <label class="btn" for="imp-photo" tabindex="0">Prendre une photo</label><input type="file" id="imp-photo" accept="image/*" capture="environment" hidden>
+        <label class="btn" for="imp-file" tabindex="0">Choisir un fichier</label><input type="file" id="imp-file" accept=".docx,.pdf,.pptx,.txt,.md,text/plain,image/*" hidden>
+        <span class="muted" id="imp-file-t">Photo, PowerPoint (.pptx), Word (.docx), PDF ou texte.</span></div>
+      <textarea id="imp-text" placeholder="Ou colle ton cours ici"></textarea>
+      <div class="row"><button class="primary" id="imp-read">Lire le cours</button></div>
+    </div>
+    <div class="card" id="pick-card" hidden>
+      <h2>Comprendre le cours</h2>
+      <p class="muted">Notéa a découpé ton cours : le plan, les mots clés rangés par importance, et le rôle de chaque phrase (définition, exemple, règle…). Les phrases essentielles sont déjà surlignées. Touche une phrase pour la surligner ou l'enlever.</p>
+      <div class="ana" id="ana">
+        <div class="tools inline" role="group" aria-label="Ce qu'on montre"><button id="v-tout" aria-pressed="true">Tout le cours</button><button id="v-ess" aria-pressed="false">Seulement l'essentiel</button><span class="muted" id="ana-n"></span></div>
+        <details id="ana-plan-d"><summary><b>Le plan</b><span class="muted" id="ana-plan-n"></span></summary><ol id="ana-plan"></ol></details>
+        <details open><summary><b>Les mots clés</b></summary><div id="ana-kw"></div></details>
+        <details id="ana-q-d"><summary><b>À quoi répondre</b><span class="muted" id="ana-q-n"></span></summary><ul id="ana-q"></ul></details>
+      </div>
+      <div class="tools inline"><button id="pick-auto">Proposer l'essentiel</button><button id="pick-none">Tout enlever</button><span class="muted" id="pick-n"></span></div>
+      <div class="reader" id="reader"></div>
+      <div class="row"><button class="primary" id="pick-go">Créer les notions</button><button id="pick-x">Annuler</button></div>
+    </div>
+    <div class="card">
+      <h2>Ajouter une phrase à retenir</h2>
+      <label for="ajout" class="muted">Les mots à cacher sont choisis tout seuls. Tu peux les changer.</label>
+      <textarea id="ajout" placeholder="Par exemple : L'usus est le droit d'utiliser la chose."></textarea>
+      <div class="row"><button id="ajout-go">Ajouter cette phrase</button></div>
+    </div>
+    <div class="card" id="edit-card" hidden>
+      <h3>Choisis les mots à cacher</h3>
+      <p class="muted">Touche un mot pour le cacher ou le montrer. Les mots surlignés seront à retrouver.</p>
+      <div class="editor" id="editor"></div>
+      <div class="row"><button class="primary" id="edit-ok">Enregistrer</button><button id="edit-del" class="danger">Supprimer la notion</button><button id="edit-x">Fermer</button></div>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h2>Mes notions</h2><span class="muted" id="ncount"></span></div>
+      <div class="nlist" id="nlist"></div>
+    </div>
+  </section>
+
+  <!-- ===== Lire et écouter ===== -->
+  <section id="tab-lecture" class="stack" hidden>
+    <div class="card" id="lec-vide" hidden>
+      <h2>Pas encore de cours à lire</h2>
+      <p class="muted">Importe un cours : tu pourras l'écouter ici, mot par mot.</p>
+      <div class="row"><button class="primary" id="lec-imp">Importer un cours</button></div>
+    </div>
+    <div class="card" id="lec-card">
+      <p class="muted">La voix lit ton cours et le mot lu s'allume. Touche une phrase pour l'écouter, dire que tu ne la comprends pas, ou garder un mot.</p>
+      <div class="row"><label for="lec-cours"><b>Cours</b></label><select id="lec-cours" style="flex:1 1 220px"></select>
+        <button class="primary" id="lec-play">Lire tout le cours</button><button id="lec-del">Enlever ce cours</button></div>
+      <div class="reader" id="lec-text"></div>
+      <div class="float" id="lec-bar" hidden>
+        <div class="row"><button id="lec-say">🔊 Écouter la phrase</button><button id="lec-nc" aria-pressed="false">Je ne comprends pas</button><button id="lec-mot">Garder un mot</button></div>
+        <div class="row" id="lec-words" hidden></div>
+      </div>
+    </div>
+    <div class="card" id="nc-card" hidden>
+      <div class="row" style="justify-content:space-between"><h2>Ce que je ne comprends pas</h2><span class="muted" id="nc-n"></span></div>
+      <div class="nlist" id="nc-list"></div>
+    </div>
+  </section>
+
+  <!-- ===== Feuille blanche ===== -->
+  <section id="tab-blanche" class="stack" hidden>
+    <div class="card">
+      <p class="muted">Sans regarder ton cours, écris tout ce dont tu te souviens. Puis appuie sur « Vérifier » : tu vois ce que tu as retrouvé et ce qui manque. Les fautes d'orthographe ne comptent pas.</p>
+      <div class="row"><label for="fb-mat"><b>Matière</b></label><select id="fb-mat" style="flex:1 1 200px"></select></div>
+      <div class="row"><span class="seg2" id="fb-mode"><button data-m="tout" class="on">Tout le cours</button><button data-m="une">Explique une notion</button></span><span class="seg2 niv" aria-label="Difficulté"><button data-n="1">Facile</button><button data-n="2" class="on">Moyen</button><button data-n="3">Difficile</button></span></div>
+      <p class="muted" id="fb-hint" hidden></p>
+      <p class="msg ok" id="fb-prompt" hidden></p>
+      <div id="fb-cours" class="reader" hidden></div>
+      <p class="muted" id="fb-count" hidden></p>
+      <textarea id="fb-text" style="min-height:220px;font-size:var(--size)" placeholder="Écris ici, avec tes mots…"></textarea>
+      <div class="row"><button class="primary" id="fb-check">Vérifier</button><button id="fb-help">Je bloque : voir le cours</button><button id="fb-voice" hidden>Dicter au lieu d'écrire</button><span class="muted" id="fb-voice-t"></span></div>
+    </div>
+    <div class="card" id="fb-res" hidden>
+      <h2 id="fb-score"></h2>
+      <p class="muted" id="fb-sub"></p>
+      <div id="fb-list" class="stack" style="gap:10px"></div>
+      <div class="row"><button class="primary" id="fb-miss">Recommencer avec ce qui manque</button><button id="fb-zero">Recommencer de zéro</button><button id="fb-rev">Mettre les oubliés en révision</button></div>
+    </div>
+  </section>
+
+  <!-- ===== Carte mentale ===== -->
+  <section id="tab-carte" class="stack" hidden>
+    <div class="card">
+      <p class="muted">Écris tes idées avec tes mots, une par ligne. Mets 2 espaces (ou un tiret) devant une ligne pour l'accrocher à l'idée du dessus. La carte se dessine toute seule.</p>
+      <div class="row"><span class="seg2" id="cm-mode" aria-label="Façon de faire la carte"><button data-c="mem" class="on">De mémoire (conseillé)</button><button data-c="aide">Avec mes notions</button></span></div>
+      <div class="row"><label for="cm-mat"><b>Matière</b></label><select id="cm-mat" style="flex:1 1 200px"></select><span class="seg2 niv" aria-label="Difficulté"><button data-n="1">Facile</button><button data-n="2" class="on">Moyen</button><button data-n="3">Difficile</button></span><button id="cm-notions">Partir de mes notions</button><button id="cm-check">Vérifier ma carte</button><button id="cm-print">Imprimer</button><span id="cm-check-row"></span></div>
+      <p class="muted" id="cm-help">Moyen : seulement les grandes idées. À toi d'écrire les détails.</p>
+      <div class="cm-wrap"><textarea id="cm-text" spellcheck="false" placeholder="Droit de propriété&#10;  usus : utiliser&#10;  fructus : les fruits&#10;  abusus : vendre ou détruire"></textarea><div id="cm-svg" class="cm-svg"></div></div>
+      <div id="cm-res" class="stack" style="gap:8px" hidden></div>
+    </div>
+  </section>
+
+  <!-- ===== Discussion ===== -->
+  <section id="tab-discu" class="stack" hidden>
+    <div class="card">
+      <p class="muted">Parle de ton cours avec une IA, comme avec un prof patient. Elle s'appuie seulement sur tes notions.</p>
+      <div class="row"><label for="dc-mat"><b>Matière</b></label><select id="dc-mat" style="flex:1 1 200px"></select></div>
+      <div class="seg2" id="dc-mode"><button data-m="exp" class="on">Explique-moi</button><button data-m="qst">Pose-moi des questions</button><button data-m="enf">Explique à un enfant</button></div>
+      <p class="muted" id="dc-help"></p>
+      <div class="row"><button class="primary" id="dc-go">Commencer la discussion</button><span class="chip" id="dc-chip"></span></div>
+    </div>
+    <div class="card" id="dc-chat" hidden>
+      <div id="dc-thread" class="thread" aria-live="polite"></div>
+      <p class="muted" id="dc-status"></p>
+      <p class="msg warn" id="dc-hard" hidden></p>
+      <textarea id="dc-in" placeholder="Écris ta réponse…" aria-label="Ta réponse"></textarea>
+      <div class="row"><button class="primary" id="dc-send">Envoyer</button><button id="dc-voice">Dicter</button><button id="dc-new">Nouvelle discussion</button></div>
+    </div>
+  </section>
+
+  <!-- ===== Carnet de mots ===== -->
+  <section id="tab-carnet" class="stack" hidden>
+    <div class="card">
+      <p class="muted">Garde ici les mots difficiles. Écris leur définition avec tes mots : c'est ça qui fait retenir.</p>
+      <div class="row"><label for="mot-new"><b>Nouveau mot</b></label><input type="text" id="mot-new" placeholder="Par exemple : usufruit" style="flex:1 1 220px" autocomplete="off"><button class="primary" id="mot-add">Ajouter</button></div>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h2>Mes mots</h2><span class="muted" id="mots-n"></span></div>
+      <div id="mots"></div>
+    </div>
+  </section>
+
+  <!-- ===== Quiz et jeux ===== -->
+  <section id="tab-jeux" class="stack" hidden>
+    <div class="card">
+      <p class="muted">Pour s'entraîner autrement. Pas de chrono : on gagne de l'XP en travaillant, pas en allant vite.</p>
+      <div class="row"><label for="jx-mat"><b>Matière</b></label><select id="jx-mat" style="flex:1 1 200px"></select></div>
+      <div class="row"><span class="seg2" id="jx-mode"><button data-m="quiz" class="on">Quiz</button><button data-m="match">Associer</button></span><span class="seg2 niv" aria-label="Difficulté"><button data-n="1">Facile</button><button data-n="2" class="on">Moyen</button><button data-n="3">Difficile</button></span>
+        <button class="primary" id="jx-go">Commencer</button></div>
+    </div>
+    <div class="card" id="qz" hidden>
+      <div class="row" style="justify-content:space-between"><span class="muted" id="qz-pos"></span><span class="muted" id="qz-score"></span></div>
+      <p class="qtext" id="qz-q"></p>
+      <div class="choices" id="qz-c"></div>
+      <div class="why" id="qz-why" hidden aria-live="polite"></div>
+      <div class="row" id="qz-type" hidden><input type="text" id="qz-in" placeholder="Écris la réponse" style="flex:1 1 240px;font-size:19px" autocomplete="off" aria-label="Ta réponse"><button class="primary" id="qz-ok">Vérifier</button></div>
+      <div class="row"><button id="qz-lire">🔊 Écouter</button><button class="primary" id="qz-next" hidden>Suivante</button></div>
+    </div>
+    <div class="card" id="mt" hidden>
+      <p class="muted">Touche un mot à gauche, puis la phrase qui va avec à droite.</p>
+      <div class="match"><div id="mt-l" class="mcol"></div><div id="mt-r" class="mcol"></div></div>
+    </div>
+    <div class="card" id="jx-end" hidden><h2 id="jx-end-t"></h2><p id="jx-end-s"></p><div class="row"><button class="primary" id="jx-again">Rejouer</button></div></div>
+  </section>
+
+  <!-- ===== Examen blanc ===== -->
+  <section id="tab-examen" class="stack" hidden>
+    <div class="card" id="ex-conf">
+      <p class="muted">Comme le jour de l'examen : pas de cours, pas d'aide, la correction à la fin. Choisis la forme de ton vrai examen.</p>
+      <div class="row"><label for="ex-mat"><b>Matière</b></label><select id="ex-mat" style="flex:1 1 200px"></select></div>
+      <div class="row"><b>Forme</b><span class="seg2" id="ex-form"><button data-f="mix" class="on">Mélange</button><button data-f="qcm">QCM</button><button data-f="trou">Texte à trous</button><button data-f="ouv">Questions ouvertes</button></span></div>
+      <div class="row"><b>Questions</b><span class="seg2" id="ex-nb"><button data-n="10" class="on">10</button><button data-n="20">20</button></span></div>
+      <div class="row"><b>Durée</b><span class="seg2" id="ex-dur"><button data-d="0" class="on">Sans limite</button><button data-d="15">15 min</button><button data-d="30">30 min</button></span>
+        <label class="row" style="gap:8px"><input type="checkbox" id="ex-tt"> Tiers-temps (+ 1/3)</label></div>
+      <div class="row"><button class="primary" id="ex-go">Commencer l'examen</button></div>
+    </div>
+    <div class="card" id="ex-run" hidden>
+      <div class="row" style="justify-content:space-between"><span class="muted" id="ex-pos"></span><b id="ex-time"></b></div>
+      <p class="muted" id="ex-kind"></p>
+      <p class="qtext" id="ex-q"></p>
+      <div class="choices" id="ex-c"></div>
+      <input type="text" id="ex-in" placeholder="Écris ta réponse" autocomplete="off" style="font-size:19px" aria-label="Ta réponse" hidden>
+      <textarea id="ex-ta" placeholder="Explique avec tes mots" aria-label="Ta réponse" hidden></textarea>
+      <div class="row"><button class="primary" id="ex-next">Valider et continuer</button><button id="ex-lire">🔊 Écouter</button><button id="ex-stop">Arrêter l'examen</button></div>
+    </div>
+    <div class="card" id="ex-res" hidden>
+      <h2 id="ex-note"></h2><p class="muted" id="ex-sub"></p>
+      <div id="ex-list" class="stack" style="gap:10px"></div>
+      <div class="row"><button class="primary" id="ex-again">Refaire un examen</button></div>
+    </div>
+  </section>
+
+  <!-- ===== Mon planning ===== -->
+  <section id="tab-planning" class="stack" hidden>
+    <div class="card">
+      <h2>Je veux réviser et retenir…</h2>
+      <div class="seg2" id="hz-def"><button data-hz="court">À court terme</button><button data-hz="moyen" class="on">À moyen terme</button><button data-hz="long">À très long terme</button></div>
+      <p class="muted"><b>Court terme</b> : jusqu'à l'examen, puis on arrête. <b>Moyen terme</b> : quelques mois. <b>Très long terme</b> : des années, avec des révisions plus espacées mais qui continuent.</p>
+    </div>
+    <div class="card">
+      <h2>Mes matières</h2>
+      <p class="muted">Quand dois-tu avoir fini d'apprendre ? Combien compte la matière ? Les matières qui comptent le plus et dont l'examen approche passent en premier.</p>
+      <div id="mats"></div>
+    </div>
+    <div class="card">
+      <h2>Ce qui ne bouge pas</h2>
+      <p class="muted">Sport, travail, rendez-vous, ou ce que tu as envie de faire. Le planning ne met pas de révision à ces moments-là.</p>
+      <div id="acts" class="stack" style="gap:6px"></div>
+      <div class="row">
+        <select id="act-day" aria-label="Jour"></select>
+        <input type="time" id="act-from" value="18:00" aria-label="Début"><span>à</span><input type="time" id="act-to" value="19:30" aria-label="Fin">
+        <input type="text" id="act-label" placeholder="Par exemple : Foot" style="flex:1 1 160px" aria-label="Activité">
+        <button id="act-add">Ajouter</button>
+      </div>
+      <div class="row"><b>Je peux réviser</b><span>en semaine de</span><input type="time" id="win-wk-a" aria-label="Semaine, début"><span>à</span><input type="time" id="win-wk-b" aria-label="Semaine, fin"></div>
+      <div class="row"><span>et le week-end de</span><input type="time" id="win-we-a" aria-label="Week-end, début"><span>à</span><input type="time" id="win-we-b" aria-label="Week-end, fin"></div>
+    </div>
+    <div class="card">
+      <h2>Ma semaine</h2>
+      <p class="muted">Le temps de chaque matière dépend de ce qui est à revoir, de la difficulté de chaque notion, du coefficient et de l'échéance. Pause de 5 minutes toutes les 25 minutes.</p>
+      <div id="plan"></div>
+    </div>
+  </section>
+
+  <!-- ===== Imprimer ===== -->
+  <section id="tab-imprimer" class="stack" hidden>
+    <div class="card">
+      <h2>Imprimer une feuille à trous</h2>
+      <p>La feuille contient les phrases avec des trous à remplir. Les réponses sont sur une deuxième page, pour se corriger seul.</p>
+      <div class="row">
+        <button class="primary" data-print="jour">Imprimer la révision du jour</button>
+        <button data-print="tout">Imprimer toutes les notions</button>
+      </div>
+      <p class="muted">Astuce : dans la fenêtre d'impression, choisis « Enregistrer en PDF » pour garder la feuille sur ton téléphone.</p>
+    </div>
+  </section>
+
+  <!-- ===== Réglages ===== -->
+  <section id="tab-reglages" class="stack" hidden>
+    <div class="card" id="reglages">
+      <h2>Lecture</h2>
+      <p class="muted">Ces réglages sont gratuits, pour toujours.</p>
+      <div class="tools">
+        <div class="group"><span class="lab">Taille du texte</span><button id="moins" aria-label="Texte plus petit">A−</button><button id="plus" aria-label="Texte plus grand">A+</button></div>
+        <div class="group"><span class="lab">Police</span><span class="seg2" id="police"><button data-f="systeme" class="on">Système</button><button data-f="arial">Arial</button><button data-f="verdana">Verdana</button></span></div>
+        <div class="group"><span class="lab">Interligne</span><span class="seg2"><button id="lh-n" class="on">Normal</button><button id="lh-l">Large</button><button id="lh-xl">Très large</button></span></div>
+        <div class="group"><span class="lab">Espace entre les lettres</span><span class="seg2" id="esp"><button data-e="0" class="on">Normal</button><button data-e="1">Large</button><button data-e="2">Très large</button></span></div>
+        <div class="group"><span class="lab">Règle de lecture</span><span class="seg2" id="regle"><button data-r="0" class="on">Non</button><button data-r="1">Oui</button></span></div>
+        <div class="group"><span class="lab">Voix</span><span class="seg2" id="voix"><button data-v="0.8">Lente</button><button data-v="1" class="on">Normale</button></span></div>
+        <div class="group"><span class="lab">Thème</span><span class="seg2" id="theme"><button data-t="auto" class="on">Automatique</button><button data-t="light">Clair</button><button data-t="dark">Sombre</button></span></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Révision</h2>
+      <div class="tools">
+        <div class="group"><span class="lab">Durée par jour</span><span class="seg2" id="minutes"><button data-m="5">5 min</button><button data-m="10" class="on">10 min</button><button data-m="15">15 min</button><button data-m="0">Selon mon planning</button></span></div>
+        <div class="group"><label class="lab" for="exam">Date du partiel</label><input type="date" id="exam"><span class="muted">Pour toutes les matières sans date. Une date par matière se règle dans « Mon planning ».</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Discussion avec l'IA</h2>
+      <p class="muted">Facultatif. Sans clé, Notéa utilise l'IA de ton appareil si elle existe, sinon elle ouvre Claude.ai. La clé reste sur cet appareil.</p>
+      <div class="row"><label for="cle"><b>Clé Claude</b></label><input type="password" id="cle" placeholder="sk-ant-…" autocomplete="off" style="flex:1 1 220px"><button id="cle-ok">Enregistrer</button></div>
+    </div>
+    <div class="card">
+      <h2>Mes données</h2>
+      <p class="muted">Tes cours et ta progression restent sur cet appareil. Rien n'est envoyé. Fais une sauvegarde pour changer d'appareil.</p>
+      <div class="row"><button id="data-out">Sauvegarder mes données</button>
+        <label class="btn" for="data-in" tabindex="0">Reprendre une sauvegarde</label><input type="file" id="data-in" accept=".json,application/json" hidden>
+        <button id="data-del" class="danger">Tout effacer</button></div>
+    </div>
+    <p class="muted">Notéa · Conçu pour les dys, utile à tous.</p>
+  </section>
+</main>
+
+<!-- Niveau 2 : barre du bas en verre (iPhone) -->
+<nav class="tabbar" aria-label="Navigation">
+  <button data-group="jour"><svg class="ic" aria-hidden="true"><use href="#i-jour"/></svg>Aujourd'hui</button>
+  <button data-group="apprendre"><svg class="ic" aria-hidden="true"><use href="#i-cours"/></svg>Apprendre</button>
+  <button data-group="tester"><svg class="ic" aria-hidden="true"><use href="#i-quiz"/></svg>Se tester</button>
+  <button data-group="organiser"><svg class="ic" aria-hidden="true"><use href="#i-planning"/></svg>Planning</button>
+  <button data-group="reglages"><svg class="ic" aria-hidden="true"><use href="#i-reglages"/></svg>Réglages</button>
+</nav>
+
+<div id="sheet"></div>
+<div class="ruler" id="ruler-t" hidden></div><div class="ruler" id="ruler-b" hidden></div>
+<script src="js/app.js"></script>
+</body>
+</html>

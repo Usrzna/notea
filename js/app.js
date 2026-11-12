@@ -1,0 +1,1479 @@
+/* Notéa — le moteur. Tout reste sur l'appareil de l'élève (localStorage). */
+(() => {
+const $ = id => document.getElementById(id);
+const DAY = 864e5, KEY = "notea-v1";
+const STOP = new Set("le la les un une des du de d l au aux et ou en est sont a à ce cette ces qui que quoi dont où se sa son ses leur leurs il elle ils elles on nous vous je tu pour par sur dans avec sans pas plus mais donc car ne y c s n qu lui être avoir fait faire comme tout tous très aussi".split(" "));
+
+/* ---------- Données ---------- */
+let db = {notions: [], exam: "", minutes: 10, day: "", newToday: 0, mats: {}, hz: "moyen", acts: [], win: {wk: ["17:00", "21:00"], we: ["10:00", "18:00"]}};
+try { const o = JSON.parse(localStorage.getItem(KEY) || localStorage.getItem("alto-apprendre-v1") || "null"); if (o) db = Object.assign(db, o); } catch (e) {}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) {} };
+const today = () => new Date().toISOString().slice(0, 10);
+if (db.day !== today()) { db.day = today(); db.newToday = 0; save(); }
+const uid = () => Math.random().toString(36).slice(2, 10);
+const tokens = text => text.split(/(\s+)/);                  // mots et espaces, dans l'ordre
+const clean = w => w.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "").replace(/^(l|d|qu|n|s|c|j)['’]/, "");
+const VERBS = new Set(["est", "sont", "désigne", "désignent", "signifie", "correspond", "consiste", "représente", "définit"]);
+function autoHoles(text, kwl) {
+  const t = tokens(text), cand = [];
+  const v = t.findIndex((w, i) => i > 0 && i < 20 && VERBS.has(clean(w)));
+  if (v > 0) {                                     // « L'usus est le droit… » : on cache « usus »
+    const term = []; for (let i = 0; i < v; i++) { const c = clean(t[i]); if (c.length >= 3 && !STOP.has(c)) term.push(i); }
+    if (term.length >= 1 && term.length <= 3) return term;
+  }
+  t.forEach((w, i) => { const c = clean(w); if (c.length < 4 || STOP.has(c)) return;
+    const lv = kwl ? (kwl.get(stem(norm(c))) || 0) : 0;        // un mot clé important du cours passe en premier
+    if (i > 0 && c.length >= 5 || lv >= 1) cand.push([lv * 100 + c.length, i]); });
+  cand.sort((a, b) => b[0] - a[0]);
+  const n = text.split(/\s+/).length > 14 ? 2 : 1;
+  return cand.slice(0, n).map(x => x[1]).sort((a, b) => a - b);
+}
+const START_D = {imp: 5, dif: 6.5, q: 6.5, rate: 7, manuel: 5};
+function makeNotion(text, mark, src, kwl, role) {
+  const n = {id: uid(), text: text.trim(), holes: autoHoles(text, kwl), mark: mark || "manuel", src: src || "", D: START_D[mark] || 5,
+    S: 0, due: 0, last: 0, reps: 0, lapses: 0, created: Date.now()};
+  if (role && role !== "info") n.role = role;
+  return n;
+}
+
+/* ---------- L'algorithme (inspiré de FSRS, l'algorithme d'Anki) ----------
+   S = stabilité du souvenir, en jours. D = difficulté, de 1 à 10.
+   Chance de s'en souvenir après t jours : R = (1 + t / (9 S))^-1.
+   La notion revient quand R descend au niveau visé (90 %, 95 % la semaine du partiel). */
+const clampD = d => Math.min(10, Math.max(1, d));
+const retr = (n, now) => n.last ? Math.pow(1 + (now - n.last) / DAY / (9 * Math.max(n.S, 0.1)), -1) : 0;
+function examTime() { return db.exam ? Date.parse(db.exam + "T08:00:00") : 0; }
+
+/* Chaque matière a : une échéance (quand avoir fini d'apprendre), un coefficient, un objectif (court, moyen, très long terme) */
+const matOf = n => n.mat || (n.src ? n.src.split(" · ")[0] : "") || "Sans matière";
+const matInfo = m => Object.assign({coef: 1, due: "", hz: db.hz || "moyen"}, db.mats[m] || {});
+const dueTime = m => { const d = matInfo(m).due || db.exam; return d ? Date.parse(d + "T08:00:00") : 0; };
+const finished = (n, now) => { const m = matOf(n), ex = dueTime(m); return matInfo(m).hz === "court" && ex && now > ex + DAY / 2; };   // court terme : après l'examen, on arrête
+const urgency = (m, now) => { const ex = dueTime(m); if (!ex || ex < now) return 1; return 1 + 3 / (1 + (ex - now) / DAY); };
+const weight = (m, now) => matInfo(m).coef * urgency(m, now);
+const secFor = n => 10 + 3 * n.D;                  // une notion difficile prend plus de temps : de 13 à 40 secondes
+function aim(n, now) {
+  const m = matOf(n), hz = matInfo(m).hz, ex = dueTime(m);
+  const base = hz === "long" ? 0.85 : 0.9;         // très long terme : révisions plus espacées, mais qui continuent
+  if (!ex) return base; const d = (ex - now) / DAY; return d >= 0 && d <= 7 ? 0.95 : base;
+}
+const daysFor = (S, r) => 9 * S * (1 / r - 1);
+function preview(n, g, now) {                 // ce que donnerait la réponse g, sans rien changer
+  const c = Object.assign({}, n); schedule(c, g, now); return c;
+}
+function schedule(n, g, now) {
+  if (!n.last) {                                   // première fois
+    n.S = g === 1 ? 0.3 : g === 2 ? 1.2 : 3.5;
+    n.D = clampD(n.D + (g === 1 ? 1 : g === 2 ? 0.3 : -0.8));
+  } else {
+    const R = retr(n, now);
+    if (g === 1) { n.S = Math.max(0.3, n.S * 0.35); n.D = clampD(n.D + 1); n.lapses++; }
+    else {
+      const ease = (11 - n.D) / 10;                // plus c'est difficile, moins ça grandit
+      const late = 1 + (1 - R) * 1.5;              // retrouvé alors qu'on oubliait : le souvenir se renforce plus
+      n.S = n.S * (1 + ease * (g === 3 ? 2.6 : 1.1) * late);
+      n.D = clampD(n.D + (g === 2 ? 0.25 : -0.5));
+    }
+  }
+  n.reps++; n.last = now;
+  let days = g === 1 ? 0 : Math.max(0.6, daysFor(n.S, aim(n, now)));
+  const ex = dueTime(matOf(n));
+  if (ex && now < ex && now + days * DAY > ex - DAY / 2) days = Math.max(0.6, (ex - DAY - now) / DAY);   // revoir la veille du partiel
+  n.due = g === 1 ? now : now + days * DAY;
+}
+const when = ms => { const d = (ms - Date.now()) / DAY;
+  if (d < 0.02) return "tout de suite"; if (d < 1.5) return "demain"; if (d < 13.5) return `dans ${Math.round(d)} jours`;
+  if (d < 60) return `dans ${Math.round(d / 7)} semaines`; return `dans ${Math.round(d / 30)} mois`; };
+
+/* ---------- La révision du jour : ce qui s'oublie le plus, sans dépasser le temps choisi ---------- */
+const NEW_MAX = 10;
+/* Combien de nouvelles notions par jour pour une matière : assez pour tout avoir vu 2 jours avant l'échéance */
+function newPerDay(m, now) {
+  const fresh = db.notions.filter(n => !n.last && matOf(n) === m).length; if (!fresh) return 0;
+  const ex = dueTime(m); if (!ex || ex < now) return Math.min(fresh, NEW_MAX);
+  return Math.ceil(fresh / Math.max(1, (ex - now) / DAY - 2));
+}
+function newQuota(now) { let q = 0; new Set(db.notions.map(matOf)).forEach(m => { q += newPerDay(m, now); }); return Math.min(30, Math.max(NEW_MAX, q)); }
+function todayQueue(now = Date.now()) {
+  const budget = Math.max(60, (db.minutes || plannedToday()) * 60);
+  const end = new Date(); end.setHours(23, 59, 59, 999);
+  const live = db.notions.filter(n => !finished(n, now));
+  // d'abord ce qui s'oublie le plus, dans les matières qui comptent le plus et dont l'examen approche
+  const due = live.filter(n => n.last && n.due <= end.getTime()).sort((a, b) => (1 - retr(b, now)) * weight(matOf(b), now) - (1 - retr(a, now)) * weight(matOf(a), now));
+  const fresh = live.filter(n => !n.last).sort((a, b) => weight(matOf(b), now) - weight(matOf(a), now) || (b.mark === "dif" || b.mark === "q") - (a.mark === "dif" || a.mark === "q") || a.created - b.created)
+    .slice(0, Math.max(0, newQuota(now) - db.newToday));
+  const out = []; let t = 0;
+  for (const n of due.concat(fresh)) { if (t + secFor(n) > budget && out.length >= 3) break; out.push(n); t += secFor(n); }
+  return out;
+}
+function renderToday() {
+  const q = todayQueue(), n = q.length;
+  const exs = [...new Set(db.notions.map(matOf))].map(m => [m, dueTime(m)]).filter(x => x[1] > Date.now()).sort((a, b) => a[1] - b[1]);
+  if ($("tuile-plan")) $("tuile-plan").textContent = exs.length ? `Prochaine échéance : ${exs[0][0]}, ${when(exs[0][1])}.` : "Ajoute tes échéances et tes coefficients : le planning se fait tout seul.";
+  $("vide").hidden = !!db.notions.length; $("jour-go").hidden = !db.notions.length;
+  if (!db.notions.length) { $("jour-titre").textContent = "Rien à réviser pour l'instant"; $("jour-sous").textContent = "Importe un cours : une photo, un PDF, un Word, un PowerPoint ou un texte."; return; }
+  if (!n) { const next = Math.min(...db.notions.map(x => x.due || Infinity)); $("jour-titre").textContent = "Tout est à jour"; $("jour-sous").textContent = "Reviens " + when(next) + ". Ton cerveau a besoin de temps pour oublier un peu."; $("go").disabled = true; $("jour-suite").textContent = ""; return; }
+  const min = Math.max(1, Math.round(q.reduce((s, x) => s + secFor(x), 0) / 60));
+  $("jour-titre").textContent = `${n} notion${n > 1 ? "s" : ""}, ${min} minute${min > 1 ? "s" : ""}`;
+  $("jour-sous").textContent = "Arrête-toi quand tu veux. Ce que tu ne fais pas aujourd'hui revient demain.";
+  $("jour-suite").textContent = exs.length ? `${exs[0][0]} : examen ${when(exs[0][1])}` : "";
+  $("go").disabled = false;
+}
+
+/* ---------- Affichage d'une notion ---------- */
+function holeHTML(n, show) {
+  const t = tokens(n.text), set = new Set(n.holes);
+  const box = document.createDocumentFragment();
+  t.forEach((w, i) => {
+    if (!set.has(i)) { box.append(w); return; }
+    const m = w.match(/^([^\p{L}\p{N}]*(?:(?:[lLdDjJnNsScCmMtT]|[qQ]u)['’])?)(.*?)([^\p{L}\p{N}]*)$/u) || ["", "", w, ""];
+    box.append(m[1]);
+    const s = document.createElement("span");
+    if (show) { s.className = "ans"; s.textContent = m[2]; }
+    else { s.className = "hole"; s.textContent = m[2]; s.setAttribute("aria-label", "mot caché"); s.style.minWidth = Math.max(3, m[2].length * 0.55) + "em"; }
+    box.append(s, m[3]);
+  });
+  return box;
+}
+const MARK = {imp: ["imp", "Important"], dif: ["dif", "Difficile"], q: ["q", "Question posée"], rate: ["rate", "Raté"], manuel: ["", "Ajoutée à la main"]};
+function srcHTML(n) {
+  const el = document.createDocumentFragment(); const [c, l] = MARK[n.mark] || MARK.manuel;
+  const chip = document.createElement("span"); chip.className = "chip " + c; chip.textContent = l; el.append(chip);
+  if (n.src) el.append(document.createTextNode(n.src));
+  return el;
+}
+
+/* ---------- La séance ---------- */
+let queue = [], idx = 0, done = 0, stats = {1: 0, 2: 0, 3: 0}, shown = false;
+function startSession() {
+  queue = todayQueue(); idx = 0; done = 0; stats = {1: 0, 2: 0, 3: 0};
+  if (!queue.length) return;
+  $("accueil").hidden = true; $("tuiles").hidden = true; $("bilan").hidden = true; $("seance").hidden = false; showCard();
+}
+function showCard() {
+  const n = queue[idx]; shown = false;
+  $("pos").textContent = `${idx + 1} sur ${queue.length}`;
+  $("prog").style.width = Math.round(idx / queue.length * 100) + "%";
+  $("q-src").replaceChildren(srcHTML(n)); $("q-text").replaceChildren(holeHTML(n, false));
+  $("voir").hidden = false; $("noter").hidden = true; $("voir").focus();
+}
+function reveal() {
+  if (shown) return; shown = true; const n = queue[idx], now = Date.now();
+  $("q-text").replaceChildren(holeHTML(n, true));
+  $("g2-when").firstChild.textContent = when(preview(n, 2, now).due) + " ";
+  $("g3-when").firstChild.textContent = when(preview(n, 3, now).due) + " ";
+  $("voir").hidden = true; $("noter").hidden = false;
+}
+function grade(g) {
+  if (!shown) return; const n = queue[idx];
+  if (!n.last) db.newToday++;
+  schedule(n, g, Date.now()); stats[g]++; save();
+  if (onceToday("n" + n.id)) gain(n.reps === 1 ? 3 : 2, "révision");
+  if (g === 1 && queue.slice(idx + 1).filter(x => x === n).length === 0) queue.push(n);   // « Raté » : elle revient à la fin
+  else done++;
+  idx++;
+  if (idx >= queue.length) endSession(); else showCard();
+}
+function endSession() {
+  $("seance").hidden = true; $("bilan").hidden = false; $("prog").style.width = "100%";
+  const tot = stats[1] + stats[2] + stats[3];
+  if (tot && idx >= queue.length && onceToday("jour")) gain(10, "révision du jour finie");
+  $("bilan-t").textContent = tot ? `${stats[3]} facile${stats[3] > 1 ? "s" : ""}, ${stats[2]} avec effort, ${stats[1]} raté${stats[1] > 1 ? "s" : ""}. Les notions difficiles reviendront plus tôt.` : "Tu reprendras plus tard.";
+  renderToday(); renderList();
+}
+$("go").addEventListener("click", startSession);
+$("voir").addEventListener("click", reveal);
+document.querySelectorAll(".grades button").forEach(b => b.addEventListener("click", () => grade(Number(b.dataset.g))));
+$("quit").addEventListener("click", endSession);
+$("bilan-ok").addEventListener("click", () => { $("bilan").hidden = true; $("accueil").hidden = false; $("tuiles").hidden = false; });
+document.addEventListener("keydown", e => {
+  if ($("seance").hidden || e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+  if (e.key === " " || e.key === "Enter") { if (!shown) { e.preventDefault(); reveal(); } }
+  else if (["1", "2", "3"].includes(e.key)) grade(Number(e.key));
+  else if (e.key === "l" || e.key === "L") $("lire").click();
+});
+
+/* ---------- Mes notions ---------- */
+function renderList() {
+  const box = $("nlist"); box.replaceChildren();
+  $("ncount").textContent = `${db.notions.length} notion${db.notions.length > 1 ? "s" : ""}`;
+  if (!db.notions.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "Aucune notion pour l'instant."; box.append(p); return; }
+  [...db.notions].sort((a, b) => (a.due || 0) - (b.due || 0)).forEach(n => {
+    const r = document.createElement("div"); r.className = "nrow";
+    const l = document.createElement("div");
+    const t = document.createElement("p"); t.className = "t"; t.append(holeHTML(n, true));
+    const w = document.createElement("p"); w.className = "when src"; w.append(srcHTML(n), document.createTextNode(" · " + (n.last ? "revient " + when(n.due) : "nouvelle")));
+    l.append(t, w);
+    const b = document.createElement("button"); b.textContent = "Modifier"; b.addEventListener("click", () => openEditor(n));
+    r.append(l, b); box.append(r);
+  });
+}
+let editing = null, editHoles = null;
+function openEditor(n) {
+  editing = n; editHoles = new Set(n.holes);
+  const ed = $("editor"); ed.replaceChildren();
+  tokens(n.text).forEach((w, i) => {
+    if (/^\s+$/.test(w) || !w) { ed.append(w); return; }
+    const s = document.createElement("span"); s.className = "w" + (editHoles.has(i) ? " on" : ""); s.textContent = w; s.tabIndex = 0; s.setAttribute("role", "button");
+    const tog = () => { if (editHoles.has(i)) editHoles.delete(i); else editHoles.add(i); s.classList.toggle("on"); };
+    s.addEventListener("click", tog); s.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tog(); } });
+    ed.append(s);
+  });
+  $("edit-card").hidden = false; $("edit-card").scrollIntoView({block: "start", behavior: "smooth"});
+}
+$("edit-ok").addEventListener("click", () => {
+  if (!editing) return;
+  if (!editHoles.size) { note("Choisis au moins un mot à cacher.", "warn"); return; }
+  editing.holes = [...editHoles].sort((a, b) => a - b); save(); $("edit-card").hidden = true; editing = null; renderList(); renderToday(); note("Notion enregistrée.", "ok");
+});
+$("edit-del").addEventListener("click", () => { if (!editing) return; db.notions = db.notions.filter(x => x !== editing); save(); $("edit-card").hidden = true; editing = null; renderList(); renderToday(); note("Notion supprimée.", "ok"); });
+$("edit-x").addEventListener("click", () => { $("edit-card").hidden = true; editing = null; });
+$("ajout-go").addEventListener("click", () => {
+  const v = $("ajout").value.trim(); if (v.split(/\s+/).length < 3) { note("Écris une phrase d'au moins 3 mots.", "warn"); return; }
+  const n = makeNotion(v, "manuel", ""); db.notions.push(n); save(); $("ajout").value = ""; renderList(); renderToday(); openEditor(n);
+});
+function importEcoute() {
+  let ec = null; try { ec = JSON.parse(localStorage.getItem("ni-ecoute-v2") || "null"); } catch (e) {}
+  if (!ec || !ec.segs || !ec.segs.length) return -1;
+  db.seen = db.seen || [];   // une notion supprimée ne revient pas
+  const have = new Set(db.notions.map(n => n.text).concat(db.seen));
+  const src = (ec.matiere || "Cours") + " · " + new Date().toLocaleDateString("fr-FR");
+  let added = 0;
+  ec.segs.forEach(s => {
+    const text = (s.fix || s.text || "").trim(); if (!text || text.split(/\s+/).length < 3 || have.has(text)) return;
+    const mark = s.dif ? "dif" : s.q ? "q" : s.imp ? "imp" : null; if (!mark) return;
+    db.notions.push(makeNotion(text, mark, src)); have.add(text); db.seen.push(text); added++;
+  });
+  save(); renderList(); renderToday();
+  return added;
+}
+
+/* ---------- Importer un cours (Word, PDF, texte) ---------- */
+const loadScript = src => new Promise((ok, ko) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = ko; document.head.append(s); });
+async function readFile(f) {
+  const name = f.name.toLowerCase();
+  if (name.endsWith(".docx")) {
+    if (typeof mammoth === "undefined") await loadScript("lib/mammoth.browser.min.js");
+    return (await mammoth.extractRawText({arrayBuffer: await f.arrayBuffer()})).value;
+  }
+  if (name.endsWith(".pdf")) {
+    const pdfjs = await import("./lib/pdf.min.mjs");
+    pdfjs.GlobalWorkerOptions.workerSrc = "lib/pdf.worker.min.mjs";
+    const doc = await pdfjs.getDocument({data: new Uint8Array(await f.arrayBuffer())}).promise;
+    let out = "";
+    for (let p = 1; p <= doc.numPages; p++) {
+      const c = await (await doc.getPage(p)).getTextContent();
+      c.items.forEach(it => { out += it.str + (it.hasEOL ? "\n" : ""); }); out += "\n\n";
+    }
+    return out;
+  }
+  if (name.endsWith(".pptx")) return readPptx(await f.arrayBuffer());
+  if (name.endsWith(".ppt")) throw new Error("ancien format PowerPoint");
+  if (/^image\//.test(f.type) || /\.(jpe?g|png|heic|webp)$/.test(name)) return readPhoto(f);
+  if (name.endsWith(".doc")) throw new Error("ancien format Word");
+  return await f.text();
+}
+/* PowerPoint (.pptx) : c'est un fichier zip. On lit le texte de chaque diapositive, dans l'ordre. */
+async function unzip(buf, keep) {
+  const dv = new DataView(buf), td = new TextDecoder(), out = {};
+  let e = -1; for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { e = i; break; }
+  if (e < 0) throw new Error("zip");
+  let p = dv.getUint32(e + 16, true); const count = dv.getUint16(e + 10, true);
+  for (let k = 0; k < count; k++) {
+    const method = dv.getUint16(p + 10, true), size = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+    const nm = td.decode(new Uint8Array(buf, p + 46, nl)); p += 46 + nl + el + cl;
+    if (!keep(nm)) continue;
+    const data = new Uint8Array(buf, off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true), size);
+    const bytes = method === 0 ? data : new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+    out[nm] = td.decode(bytes);
+  }
+  return out;
+}
+async function readPptx(buf) {
+  const files = await unzip(buf, n => /^ppt\/slides\/slide\d+\.xml$/.test(n));
+  const ent = s => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+  return Object.keys(files).sort((a, b) => parseInt(a.match(/\d+/)) - parseInt(b.match(/\d+/))).map(k =>
+    files[k].split("</a:p>").map(par => (par.match(/<a:t>([^<]*)<\/a:t>/g) || []).map(t => ent(t.slice(5, -6))).join("")).filter(x => x.trim()).join("\n")
+  ).join("\n\n");
+}
+/* Photo : la reconnaissance du texte se fait sur l'appareil (Tesseract). La première fois, l'outil se télécharge (quelques Mo). */
+async function readPhoto(f) {
+  if (typeof Tesseract === "undefined") await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
+  const r = await Tesseract.recognize(f, "fra", {logger: m => { if (m.status === "recognizing text") $("imp-file-t").textContent = "Je lis la photo… " + Math.round(m.progress * 100) + " %"; }});
+  return r.data.text;
+}
+async function takeFile(input) {
+  const f = input.files[0]; if (!f) return;
+  $("imp-file-t").textContent = "Lecture de « " + f.name + " »…";
+  try {
+    const t = await readFile(f);
+    const prev = $("imp-text").value.trim();     // plusieurs photos à la suite : le texte s'ajoute
+    $("imp-text").value = (prev ? prev + "\n\n" : "") + t.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+    if (!$("imp-mat").value && !/^image\//.test(f.type)) $("imp-mat").value = f.name.replace(/\.[^.]+$/, "");
+    $("imp-file-t").textContent = /^image\//.test(f.type) ? "Photo lue. Vérifie le texte (la lecture d'une photo peut faire des erreurs), ajoute une autre photo ou appuie sur « Lire le cours »." : "« " + f.name + " » est lu. Vérifie le texte, puis appuie sur « Lire le cours ».";
+  } catch (e) {
+    $("imp-file-t").textContent = e.message === "ancien format Word" ? "Ce fichier Word est trop ancien (.doc). Enregistre-le en .docx dans Word, puis réessaie."
+      : e.message === "ancien format PowerPoint" ? "Ce PowerPoint est trop ancien (.ppt). Enregistre-le en .pptx, puis réessaie."
+      : "Ce fichier n'a pas pu être lu. Copie le texte du cours et colle-le dans la case.";
+  }
+  input.value = "";
+}
+["imp-file", "imp-photo"].forEach(id => {
+  $(id).addEventListener("change", () => takeFile($(id)));
+  $(id).previousElementSibling.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $(id).click(); } });
+});
+const DEF = /\b(est|sont|désigne|désignent|signifie|correspond|consiste|représente|on appelle|se définit|c'est)\b|\s:\s/i;
+let picks = [];
+function splitSentences(text) {
+  return text.split(/\n\s*\n|\n(?=[-•*\d]+[.)]?\s)/).map(p => p.replace(/\s*\n\s*/g, " ").trim()).filter(Boolean)
+    .map(p => (p.match(/[^.!?…]+(?:[.!?…]+|$)/g) || [p]).map(x => x.trim()).filter(Boolean));
+}
+/* ---------- Comprendre le cours : l'algorithme de déstructuration ----------
+   1. Découper : les titres (le plan), les paragraphes, les phrases.
+   2. Donner un rôle à chaque phrase : définition, exemple, règle, formule, date, cause, question.
+   3. Noter chaque mot clé : il gagne des points s'il revient souvent, s'il est dans un titre,
+      s'il est le mot défini, ou dans une phrase « à retenir ». Un mot vu seulement dans les exemples perd des points.
+      On range en 3 niveaux : très important, important, détail.
+   4. L'essentiel = les définitions, règles, formules, phrases à retenir, et les phrases riches en mots clés.
+      Les exemples aident à comprendre, mais ne sont pas à apprendre par cœur. */
+const ROLES = {q: ["À quoi répondre", 3], ret: ["À retenir", 3], def: ["Définition", 3], form: ["Formule", 2.5], regle: ["Règle", 2.5],
+  date: ["Date", 2], cause: ["Cause et conséquence", 2], ex: ["Exemple", 0.5], info: ["", 1]};
+const KSTOP = new Set("peut peuvent doit doivent faut entre après avant cette celui celle ceux ainsi alors deux trois quatre cinq premier première second seconde exemple exemples définition retenir expliquez expliquer citez citer montrez justifiez décrivez comparez également autre autres chaque certain certains certaines plusieurs selon garde gardent avoir notamment manière moins quand lorsque leurs elle elles dont même mêmes toute toutes donne donnent permet".split(" "));
+const R_Q = /\?\s*$|^(expliqu|définisse|définir|citez|citer|compare|montrez|justifie|analyse|décrive|calcule|démontre|résume)/i;
+const R_RET = /^(à retenir|retenir|important|attention|essentiel|à savoir|notez)\b|\b(à retenir|retenez|il faut retenir)\b/i;
+const R_EX0 = /^(par exemple|exemple|ex\s*[:.]|imaginons|prenons|cas pratique|illustration)/i;
+const R_EX = /\b(par exemple|exemple\s*:|notamment|tels? que|telles? que|c'est le cas)/i;
+const R_DEF = /\b(on appelle|se définit|désignent?|signifie|correspond à|consiste à|représente|c'est-à-dire|définition)\b|^[^,]{2,50}\s(est|sont)\s(un|une|le|la|les|l['’]|des|ce|celui|celle)\b|^[^:]{2,50}\s?:\s/i;
+const R_FORM = /[=≈≤≥±√∑∫]|\d\s*[×x*/+−-]\s*\d|\b(formule|égale? à)\b/i;
+const R_REGLE = /\b(doit|doivent|il faut|interdit|obligatoire|obligation|principe|règle|article\s+\d|loi|en vertu|toujours|jamais|ne peut pas|est tenu)\b/i;
+const R_DATE = /\b(1[0-9]{3}|20[0-9]{2})\b|\bsiècle\b/;
+const R_CAUSE = /\b(parce qu|car|donc|c'est pourquoi|entraîne|provoque|cause|conséquence|en raison|grâce à|permet(tent)? de|afin de|résulte)\b/i;
+function roleOf(s) {
+  if (R_Q.test(s)) return "q"; if (R_RET.test(s)) return "ret"; if (R_EX0.test(s)) return "ex";
+  if (R_DEF.test(s)) return "def"; if (R_FORM.test(s)) return "form"; if (R_EX.test(s)) return "ex";
+  if (R_REGLE.test(s)) return "regle"; if (R_DATE.test(s)) return "date"; if (R_CAUSE.test(s)) return "cause"; return "info";
+}
+function isTitle(line) {
+  const l = line.trim(), w = l.split(/\s+/).length;
+  if (l.length < 3 || w > 12 || /^[-•*–]/.test(l)) return 0;
+  if (/^(chapitre|partie|section|titre|leçon|thème|séquence)\b/i.test(l) || /^[IVX]+\s?[.)\-–]\s/.test(l)) return 1;
+  if (/^(\d+(\.\d+)*|[A-H])\s?[.)\-–]\s/.test(l) && !/[.!?;]$/.test(l) && w <= 10) return 2;
+  if (w <= 8 && !/[.!?;,:]$/.test(l) && /^\p{Lu}/u.test(l) && !/\s:\s/.test(l)) return l === l.toUpperCase() && /\p{L}{3}/u.test(l) ? 1 : 2;
+  return 0;
+}
+const isEss = (o, cut) => o.role !== "ex" && (["def", "ret", "q", "form", "regle"].includes(o.role) || o.score >= cut);
+function analyse(text) {
+  const secs = [{title: "", level: 0, blocks: []}]; let buf = [];
+  const flush = () => { if (buf.length) { secs[secs.length - 1].blocks.push(buf.join("\n")); buf = []; } };
+  text.replace(/\r/g, "").split("\n").forEach(l => { const lv = isTitle(l);
+    if (lv) { flush(); secs.push({title: l.trim().replace(/[\s:]+$/, ""), level: lv, blocks: []}); } else if (!l.trim()) flush(); else buf.push(l); });
+  flush();
+  const all = [];
+  secs.forEach((s, si) => { s.blocks = s.blocks.flatMap(b => splitSentences(b)).map(par => par.map(t => { const o = {text: t, role: roleOf(t), sec: si}; all.push(o); return o; })); });
+  const freq = new Map(); all.forEach(o => o.text.split(/\s+/).forEach(w => { const c = clean(w); freq.set(c, (freq.get(c) || 0) + 1); }));
+  const keywords = () => {
+    const kw = new Map();
+    const add = (w, bonus, ex) => { const c = clean(w); if (c.length < 4 || STOP.has(c) || KSTOP.has(c) || /^\d+$/.test(c)) return;
+      const k = stem(norm(c)); let o = kw.get(k); if (!o) kw.set(k, o = {forms: new Map(), score: 0, ex: 0, other: 0});
+      const f = core(w); o.forms.set(f, (o.forms.get(f) || 0) + 1); o.score += 1 + bonus; ex ? o.ex++ : o.other++; };
+    secs.forEach(s => s.title && s.title.split(/\s+/).forEach(w => add(w, 3)));
+    all.forEach(o => { const t = o.text.split(/\s+/);
+      const v = o.role === "def" ? t.findIndex((w, i) => i > 0 && i < 8 && (VERBS.has(clean(w)) || w === ":")) : -1;
+      t.forEach((w, i) => add(w, (i < v ? 4 : 0) + (o.role === "ret" || o.role === "q" ? 1.5 : 0) + (i > 0 && /^\p{Lu}\p{Ll}/u.test(w) ? 0.5 : 0), o.role === "ex")); });
+    const list = [...kw.entries()].map(([k, o]) => ({k, score: o.other ? o.score : o.score * 0.4,
+      label: [...o.forms.entries()].sort((a, b) => b[1] - a[1])[0][0]})).filter(x => x.score >= 2).sort((a, b) => b.score - a.score);
+    const n3 = Math.max(3, Math.round(list.length * 0.12)), n2 = n3 + Math.round(list.length * 0.25), kwl = new Map();
+    list.forEach((x, i) => { x.lv = i < n3 ? 3 : i < n2 ? 2 : 1; kwl.set(x.k, x.lv); });
+    return {list, kwl};
+  };
+  let {list, kwl} = keywords();
+  all.forEach(o => o.base = o.role);
+  const defTerms = new Map();             // les notions clés définies dans le cours, et où elles sont définies
+  all.forEach((o, idx) => { o.idx = idx; if (o.role !== "def") return; const t = o.text.split(/\s+/), v = t.findIndex((w, i) => i > 0 && i < 8 && (VERBS.has(clean(w)) || w === ":"));
+    t.slice(0, Math.max(v, 0)).forEach(w => { const c = clean(w); if (c.length >= 4 && !STOP.has(c)) { const k = stem(norm(c)); if (!defTerms.has(k)) defTerms.set(k, {at: idx, label: core(w)}); } }); });
+  secs.forEach(s => s.blocks.forEach(par => par.forEach((o, i) => {           // 2e passage : les exemples sans mot « exemple »
+    if (!["info", "cause", "date", "regle", "ex"].includes(o.role)) return;
+    const r = exampleScore(o, {kwl, freq, prev: par[i - 1], defTerms, idx: o.idx}); o.why = r.why;
+    if (r.sc >= 3) o.role = "ex";
+  })));
+  ({list, kwl} = keywords());
+  all.forEach(o => { const seen = new Set(); let sum = 0;
+    o.text.split(/\s+/).forEach(w => { const k = stem(norm(clean(w))); if (kwl.has(k) && !seen.has(k)) { seen.add(k); sum += kwl.get(k); } });
+    o.score = ROLES[o.role][1] + Math.min(3, sum / 3); });
+  const sc = all.filter(o => o.role !== "ex").map(o => o.score).sort((a, b) => b - a), cut = sc[Math.floor(sc.length * 0.4)] || 0;
+  all.forEach(o => { o.ess = isEss(o, cut); });
+  const qs = all.filter(o => o.role === "q").map(o => o.text);           // les questions du cours
+  all.filter(o => o.role === "def").forEach(o => { const t = o.text.split(/\s+/), v = t.findIndex((w, i) => i > 0 && i < 8 && VERBS.has(clean(w)));
+    if (v > 0 && v <= 4) qs.push("Qu'est-ce que « " + t.slice(0, v).join(" ").replace(/^(l['’]|le |la |les |un |une )/i, "") + " » ?"); });
+  return {secs, all, list, kwl, qs, cut};
+}
+/* Trouver les exemples sans IA : on additionne des indices.
+   Un exemple parle d'un cas précis (une personne, une somme, un lieu, un âge), avec des mots qu'on ne revoit pas ailleurs dans le cours,
+   peu de mots clés, des « un, une, des » plutôt que « le, la, les », et il suit souvent une définition ou une règle. */
+const R_EXPLUS = /\b(supposons|imaginons|prenons|soit un|soit une|dans le cas où|au cas où|cas de figure|cf\.|e\.g\.|ex\.|comme lorsque|c'est ce qui se passe|on peut citer|à l'image de)\b/i;
+const R_PERS = /\b(M\.|Mme|Mlle|Monsieur|Madame|Me)\s+\p{Lu}|\b(Paul|Pierre|Marie|Jean|Julie|Léa|Lucas|Emma|Hugo|Sophie|Thomas|Camille|Louis|Alice|Tom|Sarah|Nathan|Chloé|Max|Inès|Adam|Jules|Zoé|Léo|Anna|Paris|Lyon|Marseille)\b/u;
+const R_QTE = /\d[\d\s.,]*\s?(€|euros?|\$|dollars?|ans|mois|jours|heures|km|kg|g|m²|m|cm|litres?|%|personnes|élèves|habitants)\b/i;
+function exampleScore(o, ctx) {
+  const why = []; let sc = 0;
+  const add = (p, w) => { sc += p; why.push(w); };
+  if (R_EX0.test(o.text) || R_EX.test(o.text) || R_EXPLUS.test(o.text)) add(3, "un mot d'exemple");
+  if (R_PERS.test(o.text)) add(2, "une personne ou un lieu précis");
+  else { const caps = o.text.split(/\s+/).slice(1).filter(w => /^\p{Lu}\p{Ll}{2,}/u.test(core(w)) && !ctx.kwl.has(stem(norm(clean(w)))) && (ctx.freq.get(clean(w)) || 0) === 1);
+    if (caps.length) add(1.5, "un nom propre"); }
+  if (R_QTE.test(o.text)) add(1.5, "une somme ou une quantité");
+  if (/^si\s/i.test(o.text) || /\b(un jour|hier|l'an dernier|récemment)\b/i.test(o.text)) add(1, "une situation inventée");
+  const words = o.text.split(/\s+/), cont = words.map(w => clean(w)).filter(c => c.length >= 4 && !STOP.has(c));
+  if (words.length >= 8 && cont.length) {
+    const kwShare = cont.filter(c => (ctx.kwl.get(stem(norm(c))) || 0) >= 2).length / cont.length;
+    const uniq = cont.filter(c => (ctx.freq.get(c) || 0) === 1).length / cont.length;
+    if (kwShare < 0.2 && ctx.prev && ["def", "regle", "form"].includes(ctx.prev.role)) add(1.5, "elle suit une définition ou une règle, avec peu de mots clés");
+    if (uniq >= 0.6) add(1, "des mots qu'on ne revoit pas dans le cours");
+    // Ton idée : la phrase reprend une notion clé déjà définie, mais avec des mots concrets à elle → elle l'illustre.
+    const term = [...ctx.defTerms.entries()].find(([k, d]) => d.at < ctx.idx && cont.some(c => stem(norm(c)) === k));
+    const concret = (o.text.match(/\b(un|une|des)\s/gi) || []).length >= 1 || R_PERS.test(o.text) || R_QTE.test(o.text);
+    const autres = term ? cont.filter(c => stem(norm(c)) !== term[0]) : [];
+    const autresCles = autres.length ? autres.filter(c => (ctx.kwl.get(stem(norm(c))) || 0) >= 2).length / autres.length : 1;
+    if (term && concret && (uniq >= 0.4 || autresCles <= 0.25)) add(2, "elle illustre la notion « " + term[1].label + " » avec un cas concret");
+    const ind = (o.text.match(/\b(un|une|des)\s/gi) || []).length, def = (o.text.match(/\b(le|la|les|l['’])/gi) || []).length;
+    if (ind >= 2 && ind > def) add(1, "des « un, une, des » : un cas précis");
+  }
+  return {sc, why};
+}
+let ana = null;
+function renderAna() {
+  const box = $("reader"); box.replaceChildren(); picks = [];
+  ana.secs.forEach((s, si) => {
+    if (s.title) { const h = document.createElement(s.level === 1 ? "h3" : "h4"); h.className = "rt"; h.id = "sec-" + si; h.textContent = s.title; box.append(h); }
+    s.blocks.forEach(par => { const p = document.createElement("p"); p.className = "rpar"; p.style.margin = "0";
+      par.forEach(o => { const un = document.createElement("span"), sp = document.createElement("span"), tg = document.createElement("button");
+        tg.type = "button"; tg.className = "rtag"; un.append(tg, sp); p.append(un);
+        const paint = () => { un.className = "unit r-" + o.role + (o.ess ? " ess" : "");
+          tg.hidden = !ROLES[o.role][0]; tg.textContent = ROLES[o.role][0] || "";
+          tg.title = (o.role === "ex" && o.why && o.why.length ? "Exemple trouvé grâce à : " + o.why.join(", ") + ". " : "") + "Touche pour dire si c'est un exemple ou non.";
+          tg.setAttribute("aria-label", (ROLES[o.role][0] || "") + ". Touche pour changer"); };
+        tg.addEventListener("click", () => {               // l'élève corrige : exemple ou pas
+          o.role = o.role === "ex" ? (o.base !== "ex" ? o.base : "info") : "ex"; o.ess = isEss(o, ana.cut); paint();
+          const it = picks.find(x => x.o === o); if (it && it.on !== o.ess) { it.on = o.ess; it.el.classList.toggle("on", it.on); countPicks(); }
+          const ne = ana.all.filter(x => x.ess).length; $("ana-n").textContent = `${ne} phrase${ne > 1 ? "s" : ""} essentielle${ne > 1 ? "s" : ""} sur ${ana.all.length}`; });
+        paint();
+        o.text.split(/(\s+)/).forEach(w => { const c = clean(w);
+          if (c.length >= 4 && !STOP.has(c) && ana.kwl.get(stem(norm(c))) === 3) { const b = document.createElement("b"); b.textContent = w; sp.append(b); } else sp.append(w); });
+        sp.append(" ");
+        const words = o.text.split(/\s+/).length;
+        if (words >= 4 && words <= 60) { const item = {text: o.text, el: sp, on: false, o}; picks.push(item);
+          sp.classList.add("sent"); sp.tabIndex = 0; sp.setAttribute("role", "button");
+          const tog = () => { item.on = !item.on; sp.classList.toggle("on", item.on); countPicks(); };
+          sp.addEventListener("click", tog); sp.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tog(); } }); }
+      });
+      box.append(p); });
+  });
+  const plan = ana.secs.map((s, i) => [s, i]).filter(([s]) => s.title);
+  $("ana-plan").replaceChildren(...plan.map(([s, i]) => { const li = document.createElement("li"); if (s.level > 1) li.style.marginLeft = "18px";
+    const a = document.createElement("a"); a.href = "#sec-" + i; a.textContent = s.title;
+    a.addEventListener("click", e => { e.preventDefault(); $("sec-" + i).scrollIntoView({block: "start", behavior: "smooth"}); }); li.append(a); return li; }));
+  $("ana-plan-d").hidden = !plan.length; $("ana-plan-n").textContent = plan.length + " partie" + (plan.length > 1 ? "s" : "");
+  const lab = {3: "Très important", 2: "Important", 1: "Détail"};
+  $("ana-kw").replaceChildren(...[3, 2, 1].map(lv => { const row = document.createElement("div"); row.className = "kwrow";
+    const items = ana.list.filter(x => x.lv === lv).slice(0, lv === 1 ? 10 : 12); if (!items.length) return row;
+    const l = document.createElement("span"); l.className = "lab"; l.textContent = lab[lv]; row.append(l);
+    items.forEach(x => { const c = document.createElement("span"); c.className = "chip kw" + lv; c.textContent = x.label; row.append(c); }); return row; }));
+  $("ana-q").replaceChildren(...ana.qs.map(q => { const li = document.createElement("li"); li.textContent = q; return li; }));
+  $("ana-q-d").hidden = !ana.qs.length; $("ana-q-n").textContent = ana.qs.length + " question" + (ana.qs.length > 1 ? "s" : "");
+  const ne = ana.all.filter(o => o.ess).length; $("ana-n").textContent = `${ne} phrase${ne > 1 ? "s" : ""} essentielle${ne > 1 ? "s" : ""} sur ${ana.all.length}`;
+  setView("tout");
+}
+function setView(v) { $("reader").dataset.view = v; $("v-tout").setAttribute("aria-pressed", v === "tout"); $("v-ess").setAttribute("aria-pressed", v === "ess"); }
+$("v-tout").addEventListener("click", () => setView("tout"));
+$("v-ess").addEventListener("click", () => setView("ess"));
+$("imp-read").addEventListener("click", () => {
+  const text = $("imp-text").value.trim();
+  if (text.split(/\s+/).length < 5) { note("Colle un cours ou choisis un fichier d'abord.", "warn"); return; }
+  ana = analyse(text); renderAna();
+  autoPick(); $("pick-card").hidden = false; $("pick-card").scrollIntoView({block: "start", behavior: "smooth"});
+});
+function countPicks() { const n = picks.filter(x => x.on).length; $("pick-n").textContent = `${n} phrase${n > 1 ? "s" : ""} surlignée${n > 1 ? "s" : ""}`; $("pick-go").textContent = n ? `Créer ${n} notion${n > 1 ? "s" : ""}` : "Créer les notions"; }
+function autoPick() { picks.forEach(x => { const w = x.text.split(/\s+/).length; x.on = (x.o ? x.o.ess : DEF.test(x.text)) && w <= 40; x.el.classList.toggle("on", x.on); }); countPicks(); }
+$("pick-auto").addEventListener("click", autoPick);
+$("pick-none").addEventListener("click", () => { picks.forEach(x => { x.on = false; x.el.classList.remove("on"); }); countPicks(); });
+$("pick-x").addEventListener("click", () => { $("pick-card").hidden = true; });
+$("pick-go").addEventListener("click", () => {
+  const chosen = picks.filter(x => x.on); if (!chosen.length) { note("Surligne au moins une phrase.", "warn"); return; }
+  const have = new Set(db.notions.map(n => n.text)); const src = ($("imp-mat").value.trim() || "Cours importé") + " · " + new Date().toLocaleDateString("fr-FR");
+  const exOf = o => { if (!ana || !o) return ""; for (let k = o.idx + 1; k < ana.all.length && k <= o.idx + 3; k++) { const z = ana.all[k]; if (z.sec !== o.sec) break; if (z.role === "ex") return z.text; if (z.ess) break; } return ""; };
+  let added = 0; chosen.forEach(x => { if (have.has(x.text)) return; const nn = makeNotion(x.text, "imp", src, ana && ana.kwl, x.o && x.o.role);
+    const e = exOf(x.o); if (e) nn.ex = e; db.notions.push(nn); have.add(x.text); added++; });
+  saveCours($("imp-mat").value.trim() || "Cours importé", $("imp-text").value.trim()); save(); useTool("notions"); renderList(); renderToday(); $("pick-card").hidden = true; $("imp-text").value = "";
+  note(`${added} notion${added > 1 ? "s" : ""} ajoutée${added > 1 ? "s" : ""}. Elles sont dans ta révision du jour.`, "ok");
+});
+
+/* ---------- Vérifier les mots de l'élève (algorithme de pertinence) ----------
+   On compare les mots sans accents, au singulier, et on accepte une ou deux fautes de frappe :
+   une faute d'orthographe ne doit pas compter comme une erreur de connaissance. */
+const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+const stem = w => { w = w.replace(/[sx]$/, ""); return w.length > 5 ? w.replace(/(ement|ment|ee|e)$/, "") : w; };
+const wordsOf = s => norm(s).split(/[^a-z0-9]+/).filter(w => w.length > 1).map(stem);
+function lev(a, b) {
+  const d = Array.from({length: b.length + 1}, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) { let prev = d[0]; d[0] = i;
+    for (let j = 1; j <= b.length; j++) { const t = d[j]; d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = t; } }
+  return d[b.length];
+}
+function found(set, word) {
+  return norm(word).split(/[^a-z0-9]+/).filter(w => w.length > 1).every(r => { const t = stem(r); if (set.has(t)) return true;
+    const tol = r.length >= 8 ? 2 : r.length >= 4 ? 1 : 0; if (!tol) return false;
+    for (const s of set) if (Math.abs(s.length - t.length) <= tol && lev(s, t) <= tol) return true; return false; });
+}
+const core = w => (w.match(/^[^\p{L}\p{N}]*(?:(?:[lLdDjJnNsScCmMtT]|[qQ]u)['’])?(.*?)[^\p{L}\p{N}]*$/u) || ["", w])[1];
+const holeWords = n => { const t = tokens(n.text); return n.holes.map(i => core(t[i] || "")).filter(Boolean); };
+const keyWords = n => { const t = tokens(n.text), h = new Set(n.holes), seen = new Set();
+  return t.map((w, i) => h.has(i) ? "" : core(w)).filter(w => { const c = clean(w); if (c.length < 4 || STOP.has(c) || seen.has(c)) return false; seen.add(c); return true; }); };
+
+/* ---------- Feuille blanche ---------- */
+let fb = {mode: "tout", all: [], targets: [], miss: [], one: null};
+const matsWithNotions = () => [...new Set(db.notions.map(matOf))].sort();
+function fbFill() {
+  const s = $("fb-mat"), cur = s.value; s.replaceChildren();
+  matsWithNotions().forEach(m => { const o = document.createElement("option"); o.value = o.textContent = m; s.append(o); });
+  if (cur && [...s.options].some(o => o.value === cur)) s.value = cur;
+}
+function fbStart(targets) {
+  fb.all = db.notions.filter(n => matOf(n) === $("fb-mat").value);
+  fb.targets = targets || fb.all; $("fb-text").value = ""; fb.help = false; $("fb-cours").hidden = true; $("fb-help").textContent = "Je bloque : voir le cours"; $("fb-res").hidden = true; const p = $("fb-prompt"); p.hidden = false;
+  if (!fb.all.length) { p.textContent = "Ajoute d'abord un cours dans « Mes cours »."; $("fb-check").disabled = true; return; }
+  $("fb-check").disabled = false;
+  if (fb.mode === "une") {
+    const pool = fb.targets.filter(n => keyWords(n).length >= 2); fb.one = pool[Math.floor(Math.random() * pool.length)] || fb.targets[0];
+    p.textContent = `Explique avec tes mots : « ${holeWords(fb.one).join(" ")} »` + (db.niv === 3 ? ` — en ${maxWords(fb.one)} mots au maximum.` : "");
+    $("fb-hint").hidden = db.niv !== 1; $("fb-hint").textContent = "Indices : " + keyWords(fb.one).map(firstLetters).join(", ");
+    $("fb-count").hidden = db.niv !== 3; $("fb-count").textContent = `0 mot sur ${maxWords(fb.one)} au maximum`;
+  } else {
+    p.textContent = db.niv === 3 ? `Écris tout ce que tu sais en ${$("fb-mat").value}.` : `${fb.targets.length} notion${fb.targets.length > 1 ? "s" : ""} à retrouver en ${$("fb-mat").value}. Écris tout ce que tu sais, dans le désordre si tu veux.`;
+    $("fb-hint").hidden = db.niv !== 1; $("fb-hint").textContent = "Indices : " + fb.targets.map(n => firstLetters(answerOf(n))).join(", "); $("fb-count").hidden = true;
+  }
+  $("fb-text").focus();
+}
+function fbCheck() {
+  const said = new Set(wordsOf($("fb-text").value));
+  if (!said.size) { note("Écris d'abord ce dont tu te souviens.", "warn"); return; }
+  const box = $("fb-list"); box.replaceChildren(); fb.miss = [];
+  if (fb.mode === "une") {
+    const n = fb.one, kw = keyWords(n), ok = kw.filter(w => found(said, w));
+    const nw = $("fb-text").value.trim().split(/\s+/).length;
+    if (db.niv === 3 && nw > maxWords(n)) { note(`Trop long : ${nw} mots. Essaie en ${maxWords(n)} mots au maximum.`, "warn"); return; }
+    const pc = kw.length ? ok.length / kw.length : 0;
+    $("fb-score").textContent = pc >= 0.6 ? "Bien expliqué !" : pc >= 0.3 ? "C'est un début" : "Il manque l'essentiel";
+    $("fb-sub").textContent = `Tu as utilisé ${ok.length} des ${kw.length} idées clés. Ce n'est pas la seule façon de bien dire : relis la phrase du cours et compare.`;
+    const r = document.createElement("div"); r.className = "res " + (pc >= 0.6 ? "ok" : "no"); r.append(holeHTML(n, true));
+    const k = document.createElement("div"); kw.forEach(w => { const s = document.createElement("span"); s.className = "kw " + (ok.includes(w) ? "ok" : "no"); s.textContent = w; k.append(s); });
+    box.append(r, k); if (pc < 0.6) fb.miss = [n];
+    if (onceToday("ex-" + n.id)) gainN(3, "explication");
+    $("fb-miss").textContent = "Une autre notion"; $("fb-zero").textContent = "Réessayer celle-ci";
+  } else {
+    const res = fb.targets.map(n => [n, holeWords(n).every(w => found(said, w))]);
+    const got = res.filter(x => x[1]).length; fb.miss = res.filter(x => !x[1]).map(x => x[0]);
+    $("fb-score").textContent = `${got} sur ${res.length} retrouvée${got > 1 ? "s" : ""}`;
+    if (onceToday("fb-" + $("fb-mat").value)) gainN(Math.round((5 + got) / (fb.help ? 2 : 1)), "feuille blanche");
+    $("fb-sub").textContent = fb.miss.length ? "En rouge, ce qui manque. Relis-le, puis recommence : c'est en cherchant qu'on retient." : "Tout y est. Bravo !";
+    res.sort((a, b) => a[1] - b[1]).forEach(([n, ok]) => { const r = document.createElement("div"); r.className = "res " + (ok ? "ok" : "no"); r.append(ok ? "✓ " : "✗ ", holeHTML(n, true)); box.append(r); });
+    $("fb-miss").textContent = "Recommencer avec ce qui manque"; $("fb-zero").textContent = "Recommencer de zéro";
+    $("fb-miss").hidden = !fb.miss.length;
+  }
+  $("fb-rev").hidden = !fb.miss.length; $("fb-res").hidden = false; $("fb-res").scrollIntoView({block: "start", behavior: "smooth"});
+}
+$("fb-check").addEventListener("click", fbCheck);
+$("fb-mat").addEventListener("change", () => fbStart());
+document.querySelectorAll("#fb-mode button").forEach(b => b.addEventListener("click", () => {
+  fb.mode = b.dataset.m; document.querySelectorAll("#fb-mode button").forEach(x => x.classList.toggle("on", x === b)); $("fb-miss").hidden = false; fbStart();
+}));
+$("fb-miss").addEventListener("click", () => fb.mode === "une" ? fbStart() : fbStart(fb.miss));
+$("fb-zero").addEventListener("click", () => { if (fb.mode === "une") { $("fb-text").value = ""; $("fb-res").hidden = true; $("fb-text").focus(); } else fbStart(); });
+$("fb-rev").addEventListener("click", () => {
+  fb.miss.forEach(n => { n.due = Date.now(); if (n.last) n.D = clampD(n.D + 0.5); }); save(); renderToday();
+  note(`${fb.miss.length} notion${fb.miss.length > 1 ? "s" : ""} ajoutée${fb.miss.length > 1 ? "s" : ""} à la révision du jour.`, "ok"); $("fb-rev").hidden = true;
+});
+/* Dicter au lieu d'écrire (si le navigateur le permet) */
+{ const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SR) { let rec = null; $("fb-voice").hidden = false;
+    $("fb-voice").addEventListener("click", () => {
+      if (rec) { rec.stop(); return; }
+      rec = new SR(); rec.lang = "fr-FR"; rec.continuous = true;
+      rec.onresult = e => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) $("fb-text").value += (/\S$/.test($("fb-text").value) ? " " : "") + e.results[i][0].transcript.trim(); };
+      rec.onend = () => { rec = null; $("fb-voice").textContent = "Dicter au lieu d'écrire"; $("fb-voice-t").textContent = ""; };
+      rec.start(); $("fb-voice").textContent = "Arrêter la dictée"; $("fb-voice-t").textContent = "Je t'écoute…";
+    }); } }
+
+/* ---------- Mon planning ----------
+   Pour chaque jour de la semaine : le temps libre (plage de révision moins les activités),
+   puis le travail de chaque matière (notions à revoir × leur difficulté + nouvelles notions),
+   rangé par importance (coefficient × proximité de l'échéance). */
+const WD = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+const COL = ["#1E7A45", "#FFC81F", "#5B34D6", "#F26A1F", "#1A5FD0", "#C8216A"];
+const toMin = t => { const [h, m] = (t || "0:0").split(":").map(Number); return h * 60 + (m || 0); };
+const hm = m => String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+const colOf = m => COL[matsWithNotions().indexOf(m) % COL.length] || COL[0];
+function setMat(m, k, v) { db.mats[m] = Object.assign(matInfo(m), {[k]: v}); save(); renderPlan(); renderToday(); }
+function renderMats() {
+  const box = $("mats"); box.replaceChildren(); const ms = matsWithNotions();
+  if (!ms.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "Importe un cours : ses matières apparaîtront ici."; box.append(p); return; }
+  const h = document.createElement("div"); h.className = "mrow head"; ["Matière", "Fini d'apprendre le", "Coefficient", "Je veux retenir"].forEach(t => { const s = document.createElement("span"); s.textContent = t; h.append(s); }); box.append(h);
+  ms.forEach(m => {
+    const i = matInfo(m), r = document.createElement("div"); r.className = "mrow";
+    const nm = document.createElement("b"); const d = document.createElement("span"); d.className = "dot"; d.style.background = colOf(m); nm.append(d, m);
+    const cnt = db.notions.filter(n => matOf(n) === m), fr = cnt.filter(n => !n.last).length;
+    const sub = document.createElement("div"); sub.className = "muted"; sub.textContent = `${cnt.length} notion${cnt.length > 1 ? "s" : ""}` + (fr ? `, ${fr} nouvelle${fr > 1 ? "s" : ""}` : ""); const c1 = document.createElement("div"); c1.append(nm, sub);
+    const due = document.createElement("input"); due.type = "date"; due.value = i.due; due.setAttribute("aria-label", "Échéance " + m); due.addEventListener("change", () => setMat(m, "due", due.value));
+    const co = document.createElement("input"); co.type = "number"; co.min = "0.5"; co.max = "20"; co.step = "0.5"; co.value = i.coef; co.style.width = "80px"; co.setAttribute("aria-label", "Coefficient " + m); co.addEventListener("change", () => setMat(m, "coef", Math.max(0.5, Number(co.value) || 1)));
+    const hz = document.createElement("select"); hz.setAttribute("aria-label", "Objectif " + m);
+    [["court", "À court terme"], ["moyen", "À moyen terme"], ["long", "À très long terme"]].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; hz.append(o); });
+    hz.value = i.hz; hz.addEventListener("change", () => setMat(m, "hz", hz.value));
+    r.append(c1, due, co, hz); box.append(r);
+  });
+}
+function renderActs() {
+  const box = $("acts"); box.replaceChildren();
+  [...db.acts].sort((a, b) => a.day - b.day || toMin(a.from) - toMin(b.from)).forEach(a => {
+    const r = document.createElement("div"); r.className = "row";
+    const t = document.createElement("span"); t.textContent = `${WD[a.day]} · ${a.from}–${a.to} · ${a.label}`;
+    const x = document.createElement("button"); x.textContent = "Retirer"; x.addEventListener("click", () => { db.acts = db.acts.filter(y => y !== a); save(); renderActs(); renderPlan(); });
+    r.append(t, x); box.append(r);
+  });
+}
+function plan() {
+  const now = Date.now(), d0 = new Date(); d0.setHours(0, 0, 0, 0); const days = [];
+  const live = db.notions.filter(n => !finished(n, now)), ms = matsWithNotions();
+  for (let d = 0; d < 7; d++) {
+    const date = new Date(d0); date.setDate(d0.getDate() + d); const nx = new Date(date); nx.setDate(date.getDate() + 1);   // pas « + 24 h » : changement d'heure
+    const a0 = date.getTime(), a1 = nx.getTime(), wd = (date.getDay() + 6) % 7;
+    let [ws, we] = (wd >= 5 ? db.win.we : db.win.wk).map(toMin);
+    if (d === 0) { const nm = new Date(); ws = Math.max(ws, Math.ceil((nm.getHours() * 60 + nm.getMinutes()) / 5) * 5); }
+    const busy = db.acts.filter(x => x.day === wd).map(x => [toMin(x.from), toMin(x.to), x.label]).sort((x, y) => x[0] - y[0]);
+    const free = []; let c = ws; busy.forEach(([f, t]) => { if (f > c) free.push([c, Math.min(f, we)]); c = Math.max(c, t); }); if (c < we) free.push([c, we]);
+    // le travail de chaque matière ce jour-là
+    const work = ms.filter(m => !(matInfo(m).hz === "court" && dueTime(m) && dueTime(m) < a0)).map(m => {
+      const rev = live.filter(n => matOf(n) === m && n.last && (d === 0 ? n.due < a1 : n.due >= a0 && n.due < a1));
+      const ex = dueTime(m), left = ex ? (ex - a0) / DAY : 99;
+      let sec = rev.reduce((s, n) => s + secFor(n), 0) + newPerDay(m, a0) * 45;
+      const blank = left > 0 && left <= 3;                  // les 3 jours avant l'examen : une feuille blanche
+      if (blank) sec += 600;
+      return {m, min: Math.ceil(sec / 60), n: rev.length, blank, w: weight(m, a0), exam: ex >= a0 && ex < a1};
+    }).filter(x => x.min > 0 || x.exam).sort((x, y) => y.w - x.w);
+    // on range le travail dans le temps libre, avec une pause de 5 min toutes les 25 min
+    const items = busy.map(([f, t, l]) => ({f, t, type: "busy", label: l}));
+    let fi = 0, cur = free[0] ? free[0][0] : 0, run = 0, missing = 0;
+    work.forEach(x => { let need = x.min;
+      while (need > 0 && fi < free.length) {
+        if (cur >= free[fi][1]) { fi++; cur = free[fi] ? free[fi][0] : 0; run = 0; continue; }
+        if (run >= 25) { const p = Math.min(cur + 5, free[fi][1]); items.push({f: cur, t: p, type: "pause", label: "Pause"}); cur = p; run = 0; continue; }
+        const len = Math.min(need, 25 - run, free[fi][1] - cur); if (len <= 0) { fi++; cur = free[fi] ? free[fi][0] : 0; continue; }
+        items.push({f: cur, t: cur + len, type: "rev", m: x.m, label: x.m + (x.blank ? " · feuille blanche et révision" : x.n ? ` · ${x.n} notion${x.n > 1 ? "s" : ""} à revoir` : " · nouvelles notions")});
+        cur += len; run += len; need -= len;
+      }
+      missing += need;
+    });
+    days.push({date, wd, items: items.sort((x, y) => x.f - y.f), missing, exams: work.filter(x => x.exam).map(x => x.m)});
+  }
+  return days;
+}
+function renderPlan() {
+  const box = $("plan"); box.replaceChildren();
+  if (!db.notions.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "Ton planning apparaîtra quand tu auras un cours à réviser."; box.append(p); return; }
+  plan().forEach((d, k) => {
+    const el = document.createElement("div"); el.className = "day";
+    const h = document.createElement("h3"); h.textContent = (k === 0 ? "Aujourd'hui · " : k === 1 ? "Demain · " : "") + d.date.toLocaleDateString("fr-FR", {weekday: "long", day: "numeric", month: "long"}); el.append(h);
+    d.exams.forEach(m => { const c = document.createElement("span"); c.className = "chip imp"; c.textContent = "Examen : " + m; el.append(c); });
+    const revs = d.items.filter(x => x.type !== "busy");
+    if (!revs.length && !d.missing) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "Rien à réviser. Profite !"; el.append(p); }
+    d.items.forEach(x => {
+      const s = document.createElement("div"); s.className = "slot " + x.type;
+      const t = document.createElement("span"); t.className = "h"; t.textContent = hm(x.f) + "–" + hm(x.t);
+      const l = document.createElement("span"); if (x.m) { const dot = document.createElement("span"); dot.className = "dot"; dot.style.background = colOf(x.m); l.append(dot); } l.append(x.label);
+      s.append(t, l); el.append(s);
+    });
+    if (k === 0 && !d.items.some(x => x.type !== "busy") && d.missing > 0) { const w = document.createElement("p"); w.className = "muted"; w.textContent = "Ta plage de révision est finie pour aujourd'hui : ce qui reste passe à demain."; el.append(w); }
+    else if (d.missing > 0) { const w = document.createElement("p"); w.className = "msg warn"; w.textContent = `Il manque ${d.missing} min ce jour-là. Élargis ta plage de révision, ou baisse un coefficient.`; el.append(w); }
+    box.append(el);
+  });
+}
+{ const s = $("act-day"); WD.forEach((w, i) => { const o = document.createElement("option"); o.value = i; o.textContent = w; s.append(o); }); }
+$("act-add").addEventListener("click", () => {
+  const a = {day: Number($("act-day").value), from: $("act-from").value, to: $("act-to").value, label: $("act-label").value.trim() || "Activité"};
+  if (toMin(a.to) <= toMin(a.from)) { note("L'heure de fin doit être après l'heure de début.", "warn"); return; }
+  db.acts.push(a); save(); $("act-label").value = ""; renderActs(); renderPlan();
+});
+[["win-wk-a", "wk", 0], ["win-wk-b", "wk", 1], ["win-we-a", "we", 0], ["win-we-b", "we", 1]].forEach(([id, k, i]) => {
+  $(id).value = db.win[k][i]; $(id).addEventListener("change", () => { db.win[k][i] = $(id).value; save(); renderPlan(); });
+});
+const setHz = v => { db.hz = v; save(); document.querySelectorAll("#hz-def button").forEach(b => b.classList.toggle("on", b.dataset.hz === v)); };
+document.querySelectorAll("#hz-def button").forEach(b => b.addEventListener("click", () => {
+  setHz(b.dataset.hz); matsWithNotions().forEach(m => { db.mats[m] = Object.assign(matInfo(m), {hz: b.dataset.hz}); }); save(); renderMats(); renderPlan(); renderToday();
+}));
+setHz(db.hz || "moyen");
+document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => { tab(b.dataset.go); if (b.dataset.go === "notions") $("imp-card").scrollIntoView({block: "start"}); }));
+
+/* ---------- Jauge d'XP et plumes ----------
+   On gagne de l'XP en travaillant vraiment : réviser une notion (une fois par jour et par notion),
+   une feuille blanche, un quiz ou un jeu fini, la révision du jour terminée, revenir après une pause.
+   Jamais pour la vitesse. Chaque niveau donne 10 plumes (pour la mascotte) et 5 crédits bonus (20 au plus par semaine). */
+db.xp = db.xp || 0; db.plumes = db.plumes || 0; db.xpDay = db.xpDay || {}; db.bonus = db.bonus || {week: "", n: 0};
+const lvlOf = x => Math.floor(Math.sqrt(x / 40)) + 1;
+const lvlStart = l => 40 * (l - 1) * (l - 1);
+const weekId = () => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return d.toISOString().slice(0, 10); };
+function renderXP() {
+  const l = lvlOf(db.xp), a = lvlStart(l), b = lvlStart(l + 1);
+  $("xp-lvl").textContent = "Niv. " + l; $("xp-n").textContent = db.xp + " XP"; $("xp-pl").textContent = "🪶 " + db.plumes;
+  $("xp-bar").style.width = Math.round((db.xp - a) / (b - a) * 100) + "%";
+  $("xp").title = `Encore ${b - db.xp} XP avant le niveau ${l + 1}`;
+}
+function gain(n, why) {
+  if (!n) return; const before = lvlOf(db.xp); db.xp += n;
+  const after = lvlOf(db.xp);
+  if (after > before) {
+    db.plumes += 10 * (after - before);
+    if (db.bonus.week !== weekId()) db.bonus = {week: weekId(), n: 0};
+    const add = Math.min(5 * (after - before), 20 - db.bonus.n); db.bonus.n += add;
+    note(`Niveau ${after} ! +10 plumes` + (add ? ` et +${add} crédits bonus cette semaine.` : "."), "ok");
+  }
+  save(); renderXP();
+}
+const onceToday = key => { const t = today(); if (db.xpDay[key] === t) return false; db.xpDay[key] = t; return true; };
+{ const last = db.lastSeen || 0, days = last ? (Date.now() - last) / DAY : 0; db.lastSeen = Date.now();
+  for (const k in db.xpDay) if (db.xpDay[k] !== today()) delete db.xpDay[k];   // on ne garde que les clés du jour
+  save(); if (days >= 2) { gain(10, "retour"); note("Content de te revoir ! +10 XP pour la reprise.", "ok"); } }
+
+/* ---------- Lecture à voix haute ---------- */
+let rate = 1; try { rate = Number(localStorage.getItem("alto-voix")) || 1; } catch (e) {}
+function speak(text) {
+  if (!("speechSynthesis" in window)) { note("La lecture à voix haute n'existe pas sur ce navigateur.", "warn"); return; }
+  speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.lang = "fr-FR"; u.rate = rate; speechSynthesis.speak(u);
+}
+/* Le mot lu s'allume : on découpe le texte en mots, et la voix dit où elle en est (événement « boundary »).
+   Si la voix ne le dit pas, on avance au rythme moyen de la lecture. Un mot caché est lu « blanc ». */
+let kara = null;
+function speakEl(el, done) {
+  if (!("speechSynthesis" in window)) { note("La lecture à voix haute n'existe pas sur ce navigateur.", "warn"); return; }
+  if (kara) kara.stop(); speechSynthesis.cancel();
+  const parts = []; let said = "";
+  const walk = node => [...node.childNodes].forEach(c => {
+    if (c.nodeType === 3) { const fr = document.createDocumentFragment();
+      c.textContent.split(/(\s+)/).forEach(w => { if (!w) return; if (/^\s+$/.test(w)) { fr.append(w); said += " "; return; }
+        const sp = document.createElement("span"); sp.className = "w"; sp.textContent = w; fr.append(sp);
+        parts.push({s: said.length, e: said.length + w.length, el: sp, len: w.length}); said += w; });
+      c.replaceWith(fr);
+    } else if (c.nodeType === 1) {
+      if (c.classList.contains("hole")) { said += " "; parts.push({s: said.length, e: said.length + 5, el: c, len: 5}); said += "blanc "; }
+      else if (c.classList.contains("w")) { parts.push({s: said.length, e: said.length + c.textContent.length, el: c, len: c.textContent.length}); said += c.textContent; }
+      else walk(c);
+    } });
+  walk(el); if (!parts.length) return;
+  let cur = -1, gotB = false, tm = null;
+  const light = k => { if (k === cur || k < 0 || k >= parts.length) return; if (cur >= 0) parts[cur].el.classList.remove("speak"); cur = k; parts[k].el.classList.add("speak"); };
+  const tick = k => { if (gotB || k >= parts.length) return; light(k); tm = setTimeout(() => tick(k + 1), (90 + 62 * parts[k].len) / rate); };
+  const u = new SpeechSynthesisUtterance(said); u.lang = "fr-FR"; u.rate = rate;
+  u.onboundary = e => { if (e.name && e.name !== "word") return; gotB = true; clearTimeout(tm); const k = parts.findIndex(x => e.charIndex < x.e); light(k < 0 ? parts.length - 1 : k); };
+  u.onstart = () => tick(0);
+  const end = () => { clearTimeout(tm); if (cur >= 0 && parts[cur]) parts[cur].el.classList.remove("speak"); cur = -1; kara = null; };
+  u.onend = () => { end(); if (done) done(); }; u.onerror = end; kara = {stop: end};
+  speechSynthesis.speak(u);
+}
+const sayNotion = (n, show) => { const t = tokens(n.text), h = new Set(n.holes); return t.map((w, i) => h.has(i) && !show ? " blanc " : w).join(""); };
+$("lire").addEventListener("click", () => { if (queue[idx]) speakEl($("q-text")); });
+document.querySelectorAll("#voix button").forEach(b => { b.classList.toggle("on", Number(b.dataset.v) === rate);
+  b.addEventListener("click", () => { rate = Number(b.dataset.v); try { localStorage.setItem("alto-voix", rate); } catch (e) {} document.querySelectorAll("#voix button").forEach(x => x.classList.toggle("on", x === b)); speak("Voici la voix de lecture."); }); });
+
+/* ---------- Espace entre les lettres (prouvé utile pour les dys) ---------- */
+const ESP = [["0", "0"], [".06em", ".2em"], [".12em", ".4em"]];
+function setEsp(i) { document.documentElement.style.setProperty("--ls", ESP[i][0]); document.documentElement.style.setProperty("--ws", ESP[i][1]);
+  document.querySelectorAll("#esp button").forEach(b => b.classList.toggle("on", Number(b.dataset.e) === i)); try { localStorage.setItem("alto-esp", i); } catch (e) {} }
+document.querySelectorAll("#esp button").forEach(b => b.addEventListener("click", () => setEsp(Number(b.dataset.e))));
+try { setEsp(Number(localStorage.getItem("alto-esp")) || 0); } catch (e) { setEsp(0); }
+
+/* ---------- Quiz ----------
+   La bonne réponse = les mots cachés de la notion. Les 3 mauvaises = les mots cachés d'autres notions,
+   de la même matière d'abord, et de longueur proche (pour que ce ne soit pas trop facile).
+   Une notion à revoir ou nouvelle est notée dans l'algorithme : juste = « avec effort » (reconnaître est plus facile que retrouver), faux = « raté ». */
+const answerOf = n => holeWords(n).join(" ");
+function fillMats(sel) { const cur = sel.value; sel.replaceChildren(); const all = document.createElement("option"); all.value = ""; all.textContent = "Toutes les matières"; sel.append(all);
+  matsWithNotions().forEach(m => { const o = document.createElement("option"); o.value = o.textContent = m; sel.append(o); }); if ([...sel.options].some(o => o.value === cur)) sel.value = cur; }
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+function distractorsN(n, k = 3) {
+  const ans = norm(answerOf(n)), L = ans.length, seen = new Set([ans]);
+  return db.notions.filter(x => x !== n && answerOf(x)).map(x => ({a: answerOf(x), n: x, same: matOf(x) === matOf(n)}))
+    .filter(x => { const k2 = norm(x.a); if (seen.has(k2)) return false; seen.add(k2); return true; })
+    .sort((x, y) => (y.same - x.same) || Math.abs(x.a.length - L) - Math.abs(y.a.length - L) || Math.random() - .5)
+    .slice(0, k);
+}
+const distractors = (n, k = 3) => distractorsN(n, k).map(x => x.a);
+/* Questions variées, sans IA. Elles viennent de la forme de la phrase :
+   « X est … » → « Qu'est-ce que X ? » ; une phrase vraie ou rendue fausse (on échange le mot clé avec celui d'une autre notion) → « Vrai ou faux ? » ;
+   un exemple trouvé dans le cours → « Quel exemple va avec X ? ». */
+function defParts(n) {
+  const t = n.text.trim().split(/\s+/), v = t.findIndex((w, i) => i > 0 && i < 6 && VERBS.has(clean(w)));
+  if (v < 1) return null;
+  const term = t.slice(0, v).join(" ").replace(/^(l['’]|le |la |les |un |une )/i, ""), def = t.slice(v + 1).join(" ").replace(/[.;:!]+$/, "");
+  if (term.split(/\s+/).length > 4 || def.split(/\s+/).length < 3) return null;
+  return {term, def};
+}
+const defOf = x => { const d = defParts(x); return d ? d.def : ""; };
+const termOf = x => { const d = defParts(x); return d ? d.term : answerOf(x); };
+function othersBy(n, f, k) {
+  const seen = new Set([norm(f(n))]);
+  return shuffle(db.notions.filter(x => x !== n && f(x))).map(x => ({a: f(x), n: x, same: matOf(x) === matOf(n)}))
+    .filter(x => { const kk = norm(x.a); if (seen.has(kk)) return false; seen.add(kk); return true; })
+    .sort((x, y) => y.same - x.same).slice(0, k);
+}
+const RXW = /^([^\p{L}\p{N}]*(?:(?:[lLdDjJnNsScCmMtT]|[qQ]u)['’])?)(.*?)([^\p{L}\p{N}]*)$/u;
+function swapHoles(n, rep) { const t = tokens(n.text), h = [...n.holes].sort((a, b) => a - b);
+  return t.map((w, i) => { if (!h.includes(i)) return w; if (i !== h[0]) return ""; const m = w.match(RXW) || ["", "", w, ""]; return m[1] + rep + m[3]; }).join("").replace(/\s{2,}/g, " "); }
+function qTypes(n) {
+  const ty = [], hard = db.niv === 3, need = db.niv === 1 ? 1 : 2;
+  if (n.holes.length && answerOf(n)) ty.push("trou");
+  if (defOf(n) && (hard || othersBy(n, defOf, need).length >= need)) ty.push("def");
+  if (!hard && n.holes.length && answerOf(n) && distractorsN(n, 1).length) ty.push("vf");
+  if (!hard && n.ex && othersBy(n, x => x.ex, 1).length) ty.push("ex");
+  return ty;
+}
+let qz = {list: [], i: 0, ok: 0, last: "", cur: null};
+function pool() { const m = $("jx-mat").value; return db.notions.filter(n => (!m || matOf(n) === m) && qTypes(n).length); }
+function quizStart() {
+  const now = Date.now(), p = pool().sort((a, b) => ((a.last ? a.due : 0) <= now ? 0 : 1) - ((b.last ? b.due : 0) <= now ? 0 : 1) || Math.random() - .5);
+  if (db.notions.filter(n => answerOf(n)).length < 4) { note("Il faut au moins 4 notions pour un quiz.", "warn"); return; }
+  qz = {list: p.slice(0, 10), i: 0, ok: 0, last: "", cur: null}; $("jx-end").hidden = true; $("mt").hidden = true; $("qz").hidden = false; quizShow();
+}
+function quizShow() {
+  const n = qz.list[qz.i], ty = qTypes(n); let t = ty[Math.floor(Math.random() * ty.length)];
+  if (ty.length > 1 && t === qz.last) t = ty.find(x => x !== qz.last);          // on change de forme d'une question à l'autre
+  qz.last = t; qz.cur = {t, n};
+  $("qz-pos").textContent = `Question ${qz.i + 1} sur ${qz.list.length}`; $("qz-score").textContent = `${qz.ok} juste${qz.ok > 1 ? "s" : ""}`;
+  $("qz-next").hidden = true; $("qz-why").hidden = true;
+  const q = $("qz-q"), box = $("qz-c"); q.replaceChildren(); box.replaceChildren();
+  const typed = db.niv === 3 && (t === "trou" || t === "def"); $("qz-type").hidden = !typed; box.hidden = typed;
+  const k = db.niv === 1 ? 1 : 3, tag = txt => { const c = document.createElement("span"); c.className = "chip"; c.textContent = txt; return c; };
+  let good = "", opts = [];
+  if (t === "trou") { q.append(holeHTML(n, false)); good = answerOf(n); opts = distractorsN(n, k); }
+  else if (t === "def") { q.append(tag("Définition"), " Qu'est-ce que « " + termOf(n) + " » ?"); good = defOf(n); opts = othersBy(n, defOf, k); }
+  else if (t === "ex") { q.append(tag("Exemple"), " Quel exemple va avec « " + termOf(n) + " » ?"); good = n.ex; opts = othersBy(n, x => x.ex, k); }
+  else {
+    const d = distractorsN(n, 1)[0], vrai = Math.random() < .5 || !d;
+    q.append(tag("Vrai ou faux ?"), " ", vrai ? n.text : swapHoles(n, d.a));
+    qz.cur.good = vrai ? "Vrai" : "Faux"; qz.cur.other = vrai ? null : d.n;
+    ["Vrai", "Faux"].forEach(a => { const b = document.createElement("button"); b.textContent = a; b.addEventListener("click", () => quizAnswer(b, a === qz.cur.good, a === "Vrai" ? qz.cur.other : null)); box.append(b); });
+    return;
+  }
+  qz.cur.good = good;
+  if (typed) { $("qz-in").value = ""; $("qz-in").disabled = false; $("qz-in").placeholder = t === "def" ? "Explique avec tes mots" : "Écris la réponse"; $("qz-in").focus(); return; }
+  shuffle([{a: good, n: null}, ...opts]).forEach(o => { const b = document.createElement("button"); b.textContent = o.a; b.addEventListener("click", () => quizAnswer(b, o.a === good, o.n)); box.append(b); });
+}
+/* Expliquer l'erreur : on montre la phrase du cours. Si la réponse choisie appartient à une autre notion, on montre laquelle :
+   c'est souvent là qu'est la confusion. */
+function showWhy(n, good, other, typedAnswer) {
+  const w = $("qz-why"); w.replaceChildren(); w.className = "why " + (good ? "ok" : "no");
+  const h = document.createElement("b"); h.textContent = good ? "Juste ! Dans ton cours :" : "Pas tout à fait. Dans ton cours :"; w.append(h);
+  const p = document.createElement("div"); p.append(holeHTML(n, true)); w.append(p);
+  if (!good && typedAnswer) { const e = document.createElement("div"); e.textContent = "Réponse attendue : « " + typedAnswer + " »."; w.append(e); }
+  if (!good && other) { const o = document.createElement("div"); o.className = "muted"; o.textContent = "Ce que tu as choisi vient d'une autre notion : « " + other.text + " »"; w.append(o); }
+  if (n.ex && qz.cur.t !== "ex") { const e = document.createElement("div"); e.className = "muted"; e.textContent = "Exemple : " + n.ex; w.append(e); }
+  const sr = document.createElement("div"); sr.className = "src"; sr.append(srcHTML(n)); w.append(sr);
+  w.hidden = false;
+}
+function quizAnswer(btn, good, other) {
+  if (!$("qz-next").hidden) return; const c = qz.cur, n = c.n, now = Date.now();
+  [...$("qz-c").children].forEach(b => { if (b.textContent === c.good) b.classList.add("ok"); });
+  if (btn) { if (!good) btn.classList.add("no"); } else $("qz-in").disabled = true;
+  if (good) qz.ok++;
+  if (c.t === "trou") $("qz-q").replaceChildren(holeHTML(n, true));
+  showWhy(n, good, other, btn ? "" : c.good);
+  if (!n.last || n.due <= now) { if (!n.last) db.newToday++; schedule(n, good ? 2 : 1, now); save(); }
+  if (onceToday("n" + n.id)) gainN(1, "quiz");
+  $("qz-next").hidden = false; $("qz-next").textContent = qz.i + 1 < qz.list.length ? "Suivante" : "Voir le score"; $("qz-next").focus();
+}
+$("qz-next").addEventListener("click", () => { qz.i++; if (qz.i < qz.list.length) quizShow(); else jeuFin(`${qz.ok} sur ${qz.list.length}`, qz.ok === qz.list.length ? "Parfait !" : "Les notions ratées reviendront plus tôt dans ta révision."); });
+$("qz-ok").addEventListener("click", () => { const v = $("qz-in").value.trim(); if (!v) return; const c = qz.cur, said = new Set(wordsOf(v)); let good;
+  if (c.t === "def") { const need = [...new Set(c.good.split(/\s+/).map(clean).filter(w => w.length >= 4 && !STOP.has(w)))]; good = need.length ? need.filter(w => found(said, w)).length / need.length >= 0.5 : found(said, c.good); }
+  else good = found(said, c.good);
+  quizAnswer(null, good, null); });
+$("qz-in").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); if ($("qz-next").hidden) $("qz-ok").click(); else $("qz-next").click(); } });
+$("qz-lire").addEventListener("click", () => { if (qz.cur) speakEl($("qz-q")); });
+
+/* ---------- Jeu « Associer » : 5 mots à relier à leur phrase. Pas de chrono. ---------- */
+let mt = {sel: null, left: 0};
+function matchStart() {
+  const p = shuffle(pool()).filter((n, i, a) => a.findIndex(x => norm(answerOf(x)) === norm(answerOf(n))) === i).slice(0, 5);
+  if (p.length < 3) { note("Il faut au moins 3 notions dans cette matière pour jouer.", "warn"); return; }
+  $("jx-end").hidden = true; $("qz").hidden = true; $("mt").hidden = false; mt = {sel: null, left: p.length};
+  const L = $("mt-l"), R = $("mt-r"); L.replaceChildren(); R.replaceChildren();
+  shuffle([...p]).forEach(n => { const b = document.createElement("button"); b.textContent = answerOf(n); b.dataset.id = n.id;
+    b.addEventListener("click", () => { if (b.disabled) return; L.querySelectorAll("button").forEach(x => x.classList.remove("sel")); b.classList.add("sel"); mt.sel = b; }); L.append(b); });
+  shuffle([...p]).forEach(n => { const b = document.createElement("button"); b.append(holeHTML(n, false)); b.dataset.id = n.id;
+    b.addEventListener("click", () => {
+      if (b.disabled || !mt.sel) { if (!mt.sel) note("Touche d'abord un mot à gauche.", "warn"); return; }
+      if (mt.sel.dataset.id === b.dataset.id) { b.replaceChildren(holeHTML(n, true)); [b, mt.sel].forEach(x => { x.classList.remove("sel"); x.classList.add("ok"); x.disabled = true; }); mt.sel = null; mt.left--;
+        if (!mt.left) setTimeout(() => jeuFin("Tout est relié !", "Bravo. Tu peux rejouer avec d'autres notions."), 500); }
+      else { b.classList.add("no"); setTimeout(() => b.classList.remove("no"), 700); }
+    }); R.append(b); });
+}
+function jeuFin(t, sub) {
+  $("qz").hidden = true; $("mt").hidden = true; $("jx-end").hidden = false; $("jx-end-t").textContent = t; $("jx-end-s").textContent = sub;
+  if (onceToday("jeu-" + jx)) gainN(5, "jeu"); renderToday();
+}
+let jx = "quiz";
+document.querySelectorAll("#jx-mode button").forEach(b => b.addEventListener("click", () => { jx = b.dataset.m; document.querySelectorAll("#jx-mode button").forEach(x => x.classList.toggle("on", x === b)); }));
+$("jx-go").addEventListener("click", () => jx === "quiz" ? quizStart() : matchStart());
+$("jx-again").addEventListener("click", () => jx === "quiz" ? quizStart() : matchStart());
+
+/* ---------- Carte mentale faite par l'élève ----------
+   L'élève écrit ses idées en liste (2 espaces ou un tiret = un niveau de plus).
+   L'algorithme place la matière au centre, les idées principales en cercle, et leurs détails autour d'elles. */
+db.maps = db.maps || {};
+function parseOutline(text) {
+  const root = {t: "", kids: []}, stack = [{lvl: -1, node: root}];
+  text.split("\n").forEach(line => { if (!line.trim()) return;
+    const m = line.match(/^(\s*)([-•*]\s*)?(.*)$/), lvl = Math.floor(m[1].replace(/\t/g, "  ").length / 2) + (m[2] && !m[1] ? 1 : 0);
+    const node = {t: m[3].trim(), kids: []};
+    while (stack.length > 1 && stack[stack.length - 1].lvl >= lvl) stack.pop();
+    stack[stack.length - 1].node.kids.push(node); stack.push({lvl, node});
+  });
+  return root;
+}
+const esc = t => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+function wrapLines(t, max) { const out = []; let cur = ""; t.split(/\s+/).forEach(w => { if ((cur + " " + w).trim().length > max && cur) { out.push(cur); cur = w; } else cur = (cur + " " + w).trim(); }); if (cur) out.push(cur); return out.slice(0, 3); }
+let BOX = [];
+function bubble(x, y, t, kind, col) {
+  const lines = wrapLines(t, kind === 0 ? 16 : kind === 1 ? 16 : 18), fs = kind === 0 ? 30 : kind === 1 ? 25 : 21, lh = fs * 1.25;
+  const w = Math.max(...lines.map(l => l.length)) * fs * 0.56 + 28, h = lines.length * lh + 18;
+  BOX.push([x - w / 2, y - h / 2, x + w / 2, y + h / 2]);
+  const fill = kind === 0 ? ACCENT() : kind === 1 ? col : "#FFFFFF", fg = kind === 0 ? "#FFFFFF" : kind === 1 ? "#1E1A10" : "#251B33";
+  return `<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="${kind === 2 ? 12 : 18}" fill="${fill}" stroke="${kind === 2 ? col : "none"}" stroke-width="2"/>` +
+    `<text x="${x}" y="${y - (lines.length - 1) * lh / 2 + fs * 0.35}" text-anchor="middle" font-family="Arial" font-size="${fs}" font-weight="${kind < 2 ? 700 : 400}" fill="${fg}">` +
+    lines.map((l, i) => `<tspan x="${x}" dy="${i ? lh : 0}">${esc(l)}</tspan>`).join("") + `</text>`;
+}
+const CMC = ["#C9B6FF", "#FFD84D", "#A6E3BC", "#FFB08A", "#B8D4FF", "#F6B6D0"];
+function drawMap() {
+  const m = $("cm-mat").value, tree = parseOutline($("cm-text").value);
+  let top = tree.kids; if (top.length === 1 && top[0].kids.length) { tree.t = top[0].t; top = top[0].kids; }
+  const W = 1000, H = 760, cx = W / 2, cy = H / 2, k = Math.max(top.length, 1), R1 = 210, R2 = 340;
+  let lines = "", nodes = ""; BOX = [];
+  top.forEach((c, i) => {
+    const a = -Math.PI / 2 + i * 2 * Math.PI / k, x = cx + Math.cos(a) * R1 * 1.25, y = cy + Math.sin(a) * R1, col = CMC[i % CMC.length];
+    lines += `<path d="M${cx} ${cy} Q ${(cx + x) / 2} ${(cy + y) / 2 - 20} ${x} ${y}" stroke="${col}" stroke-width="6" fill="none" stroke-linecap="round"/>`;
+    const n = c.kids.length, spread = Math.min(Math.PI / k * 1.6, 1.4);
+    c.kids.forEach((g, j) => { const b = a + (n > 1 ? (j / (n - 1) - .5) * spread : 0), gx = cx + Math.cos(b) * R2 * 1.32, gy = cy + Math.sin(b) * R2;
+      lines += `<path d="M${x} ${y} L ${gx} ${gy}" stroke="${col}" stroke-width="3" fill="none"/>`; nodes += bubble(gx, gy, g.t, 2, col); });
+    nodes += bubble(x, y, c.t, 1, col);
+  });
+  nodes += bubble(cx, cy, tree.t || m || "Ma carte", 0);
+  let x0 = Math.min(...BOX.map(b => b[0])) - 16, y0 = Math.min(...BOX.map(b => b[1])) - 16, x1 = Math.max(...BOX.map(b => b[2])) + 16, y1 = Math.max(...BOX.map(b => b[3])) + 16;
+  if (x1 - x0 < 900) { const c = (x0 + x1) / 2; x0 = c - 450; x1 = c + 450; }      // jamais trop zoomé quand il y a peu d'idées
+  if (y1 - y0 < 640) { const c = (y0 + y1) / 2; y0 = c - 320; y1 = c + 320; }
+  $("cm-svg").innerHTML = `<svg viewBox="${x0} ${y0} ${x1 - x0} ${y1 - y0}" role="img" aria-label="Carte mentale">${lines}${nodes}</svg>`;
+  db.maps[m || "_"] = $("cm-text").value; save();
+}
+let cmT; $("cm-text").addEventListener("input", () => { clearTimeout(cmT); cmT = setTimeout(() => { drawMap(); if ($("cm-text").value.split("\n").filter(x => x.trim()).length >= 5 && onceToday("carte-" + $("cm-mat").value)) gain(5, "carte"); }, 300); });
+$("cm-mat").addEventListener("change", () => { $("cm-text").value = db.maps[$("cm-mat").value || "_"] || ""; drawMap(); });
+$("cm-notions").addEventListener("click", () => {
+  const m = $("cm-mat").value, ns = db.notions.filter(n => !m || matOf(n) === m);
+  if (!ns.length) { note("Pas encore de notion dans cette matière.", "warn"); return; }
+  const prev = $("cm-text").value.trim();
+  if (db.niv === 3) { $("cm-text").value = (m || "Mes cours") + "\n"; drawMap(); $("cm-text").focus(); note("Difficile : seulement le sujet. Écris tout de mémoire, puis « Vérifier ma carte ».", "ok"); return; }
+  $("cm-text").value = (prev ? prev + "\n" : (m || "Mes cours") + "\n") + ns.slice(0, 8).map(n => "  " + answerOf(n) + (db.niv === 1 && keyWords(n).length ? "\n    " + keyWords(n).slice(0, 3).join(", ") : "")).join("\n");
+  drawMap(); note("Voilà une base. Réécris chaque idée avec tes mots : c'est ça qui fait retenir.", "ok");
+});
+$("cm-print").addEventListener("click", () => { const sh = $("sheet"); sh.innerHTML = `<h2>Notéa · Carte mentale · ${esc($("cm-mat").value || "")}</h2>` + $("cm-svg").innerHTML; window.print(); });
+
+/* ---------- Niveau de difficulté (Facile, Moyen, Difficile) ----------
+   Feuille blanche : Facile = des indices (premières lettres) ; Difficile = expliquer en peu de mots.
+   Quiz : Facile = 2 choix ; Moyen = 4 choix ; Difficile = écrire la réponse soi-même.
+   Carte mentale : Facile = les idées et des détails ; Moyen = les grandes idées ; Difficile = juste le sujet.
+   Plus c'est difficile, plus on gagne d'XP (×1, ×1,5, ×2). */
+db.niv = db.niv || 2;
+const NIVX = {1: 1, 2: 1.5, 3: 2};
+const gainN = (n, why) => gain(Math.round(n * NIVX[db.niv]), why);
+function setNiv(v) { db.niv = v; save(); document.querySelectorAll(".niv button").forEach(b => b.classList.toggle("on", Number(b.dataset.n) === v));
+  if (db.cmMode !== "mem") $("cm-help").textContent = v === 1 ? "Facile : tes notions et des mots-clés sont déjà là. Réécris-les avec tes mots." : v === 2 ? "Moyen : seulement les grandes idées. À toi d'écrire les détails." : "Difficile : juste le sujet. Écris tout de mémoire, puis appuie sur « Vérifier ma carte »."; }
+document.querySelectorAll(".niv button").forEach(b => b.addEventListener("click", () => { setNiv(Number(b.dataset.n)); if (!$("tab-blanche").hidden) fbStart(); }));
+setNiv(db.niv);
+const firstLetters = w => w.split(/\s+/).map(x => x.slice(0, 2) + "…").join(" ");
+const maxWords = n => Math.max(6, Math.round(keyWords(n).length * 1.5));
+$("fb-text").addEventListener("input", () => { if (fb.mode !== "une" || db.niv !== 3 || !fb.one) return;
+  const c = $("fb-text").value.trim().split(/\s+/).filter(Boolean).length, m = maxWords(fb.one);
+  $("fb-count").textContent = `${c} mot${c > 1 ? "s" : ""} sur ${m} au maximum`; $("fb-count").style.color = c > m ? "var(--bad)" : ""; });
+$("cm-check").addEventListener("click", () => {
+  const m = $("cm-mat").value, ns = db.notions.filter(n => answerOf(n) && (!m || matOf(n) === m)), said = new Set(wordsOf($("cm-text").value));
+  if (!ns.length) { note("Choisis une matière qui a des notions.", "warn"); return; }
+  const res = ns.map(n => [n, found(said, answerOf(n))]), got = res.filter(x => x[1]).length, box = $("cm-res"); box.replaceChildren();
+  const h = document.createElement("h3"); h.textContent = `${got} notion${got > 1 ? "s" : ""} sur ${ns.length} dans ta carte`; box.append(h);
+  res.sort((a, b) => a[1] - b[1]).forEach(([n, ok]) => { const r = document.createElement("div"); r.className = "res " + (ok ? "ok" : "no"); r.append(ok ? "✓ " : "✗ ", holeHTML(n, true)); box.append(r); });
+  const miss = res.filter(x => !x[1]).map(x => x[0]);
+  if (miss.length) { const row = document.createElement("div"); row.className = "row";
+    const b1 = document.createElement("button"); b1.textContent = "Ajouter les oublis à ma carte";
+    b1.addEventListener("click", () => { $("cm-text").value = $("cm-text").value.replace(/\s*$/, "") + "\n" + miss.map(n => "  " + answerOf(n) + " (oublié)").join("\n"); drawMap(); b1.disabled = true; });
+    const b2 = document.createElement("button"); b2.className = "primary"; b2.textContent = `Revoir ${miss.length > 1 ? "les " + miss.length + " oublis" : "l'oubli"} aujourd'hui`;
+    b2.addEventListener("click", () => { const now = Date.now(); miss.forEach(n => { n.due = now; }); save(); renderToday(); b2.disabled = true; note("Les oublis sont dans ta révision du jour.", "ok"); });
+    row.append(b1, b2); box.append(row); }
+  box.hidden = false; if (onceToday("cmv-" + m)) gainN((db.cmMode === "mem" ? 5 : 3) + got, "carte vérifiée");
+});
+/* Carte de mémoire (conseillé) : faire la carte sans le cours, puis comparer. Se souvenir fait plus retenir que recopier. */
+db.cmMode = db.cmMode || "mem";
+function setCmMode(v) { db.cmMode = v; save(); document.querySelectorAll("#cm-mode button").forEach(b => b.classList.toggle("on", b.dataset.c === v));
+  $("cm-notions").hidden = v === "mem"; document.querySelector("#tab-carte .niv").hidden = v === "mem"; $("cm-check").textContent = v === "mem" ? "Comparer avec le cours" : "Vérifier ma carte";
+  if (v === "mem") $("cm-help").textContent = "De mémoire : écris tout ce que tu sais, sans regarder le cours. Puis appuie sur « Comparer avec le cours ». C'est ce qui fait le plus retenir."; else setNiv(db.niv); }
+document.querySelectorAll("#cm-mode button").forEach(b => b.addEventListener("click", () => setCmMode(b.dataset.c)));
+setCmMode(db.cmMode);
+
+/* ---------- « Je bloque » : en mode Apprendre, on peut revoir le cours (on gagne alors moitié moins d'XP) ---------- */
+$("fb-help").addEventListener("click", () => {
+  const box = $("fb-cours"), show = box.hidden; box.hidden = !show; $("fb-help").textContent = show ? "Cacher le cours" : "Je bloque : voir le cours";
+  if (show) { fb.help = true; box.replaceChildren(); (fb.mode === "une" && fb.one ? [fb.one] : fb.targets).forEach(n => { const p = document.createElement("p"); p.append(holeHTML(n, true)); box.append(p); }); }
+});
+
+/* ---------- Examen blanc ----------
+   Questions tirées au hasard dans la matière, selon la forme du vrai examen :
+   QCM (4 choix), texte à trous (on écrit le mot), question ouverte (on explique : il faut au moins la moitié des idées clés).
+   Pas de correction pendant l'examen. Note sur 20 à la fin. Les erreurs reviennent dans la révision du jour. */
+let ex = null, exTimer = null;
+const exSel = id => document.querySelector(`#${id} button.on`);
+["ex-form", "ex-nb", "ex-dur"].forEach(id => document.querySelectorAll(`#${id} button`).forEach(b => b.addEventListener("click", () => { document.querySelectorAll(`#${id} button`).forEach(x => x.classList.toggle("on", x === b)); })));
+function exStart() {
+  const m = $("ex-mat").value, form = exSel("ex-form").dataset.f, nb = Number(exSel("ex-nb").dataset.n);
+  let dur = Number(exSel("ex-dur").dataset.d) * 60; if (dur && $("ex-tt").checked) dur = Math.round(dur * 4 / 3);
+  const ns = shuffle(db.notions.filter(n => answerOf(n) && (!m || matOf(n) === m)));
+  if (ns.length < 4) { note("Il faut au moins 4 notions dans cette matière pour un examen.", "warn"); return; }
+  const kinds = ["qcm", "trou", "ouv"];
+  const qs = ns.slice(0, nb).map((n, i) => ({n, k: form === "mix" ? (keyWords(n).length >= 2 ? kinds[i % 3] : kinds[i % 2]) : (form === "ouv" && keyWords(n).length < 2 ? "trou" : form), a: null}));
+  ex = {qs, i: 0, end: dur ? Date.now() + dur * 1000 : 0};
+  $("ex-conf").hidden = true; $("ex-res").hidden = true; $("ex-run").hidden = false; exShow();
+  clearInterval(exTimer); exTimer = setInterval(exTick, 1000); exTick();
+}
+function exTick() {
+  if (!ex) return; if (!ex.end) { $("ex-time").textContent = ""; return; }
+  const left = Math.max(0, Math.round((ex.end - Date.now()) / 1000)); $("ex-time").textContent = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+  if (!left) { exSave(); exFinish("Temps écoulé."); }
+}
+function exShow() {
+  const q = ex.qs[ex.i], n = q.n; $("ex-pos").textContent = `Question ${ex.i + 1} sur ${ex.qs.length}`;
+  $("ex-kind").textContent = q.k === "qcm" ? "Choisis la bonne réponse." : q.k === "trou" ? "Écris le mot qui manque." : "Explique avec tes mots.";
+  $("ex-c").hidden = q.k !== "qcm"; $("ex-in").hidden = q.k !== "trou"; $("ex-ta").hidden = q.k !== "ouv";
+  if (q.k === "ouv") $("ex-q").textContent = `Que sais-tu sur « ${answerOf(n)} » ?`; else $("ex-q").replaceChildren(holeHTML(n, false));
+  $("ex-in").value = ""; $("ex-ta").value = ""; const box = $("ex-c"); box.replaceChildren();
+  if (q.k === "qcm") shuffle([answerOf(n), ...distractors(n)]).forEach(a => { const b = document.createElement("button"); b.textContent = a;
+    b.addEventListener("click", () => { box.querySelectorAll("button").forEach(x => x.classList.toggle("sel", x === b)); q.a = a; }); box.append(b); });
+  $("ex-next").textContent = ex.i + 1 < ex.qs.length ? "Valider et continuer" : "Rendre ma copie";
+  (q.k === "trou" ? $("ex-in") : q.k === "ouv" ? $("ex-ta") : $("ex-next")).focus();
+}
+function exSave() { const q = ex.qs[ex.i]; if (q.k === "trou") q.a = $("ex-in").value.trim(); if (q.k === "ouv") q.a = $("ex-ta").value.trim(); }
+function exCorrect(q) {
+  if (!q.a) return false; const n = q.n;
+  if (q.k === "qcm") return q.a === answerOf(n);
+  if (q.k === "trou") return found(new Set(wordsOf(q.a)), answerOf(n));
+  const kw = keyWords(n), said = new Set(wordsOf(q.a)); return kw.filter(w => found(said, w)).length >= Math.ceil(kw.length / 2);
+}
+function exFinish(why) {
+  clearInterval(exTimer); $("ex-run").hidden = true; $("ex-res").hidden = false; $("ex-conf").hidden = false;
+  const res = ex.qs.map(q => [q, exCorrect(q)]), ok = res.filter(x => x[1]).length, sur20 = Math.round(ok / res.length * 200) / 10;
+  $("ex-note").textContent = `${String(sur20).replace(".", ",")} / 20`;
+  $("ex-sub").textContent = (why ? why + " " : "") + `${ok} bonne${ok > 1 ? "s" : ""} réponse${ok > 1 ? "s" : ""} sur ${res.length}. Les erreurs reviennent dans ta révision du jour.`;
+  const box = $("ex-list"); box.replaceChildren();
+  res.forEach(([q, good]) => { const r = document.createElement("div"); r.className = "res " + (good ? "ok" : "no");
+    r.append(good ? "✓ " : "✗ ", holeHTML(q.n, true)); if (!good && q.a) { const y = document.createElement("div"); y.className = "muted"; y.textContent = "Ta réponse : " + q.a; r.append(y); } box.append(r);
+    if (!good) { q.n.due = Date.now(); if (q.n.last) q.n.D = clampD(q.n.D + 0.5); } });
+  save(); renderToday(); if (onceToday("examen")) gainN(10 + ok, "examen blanc"); ex = null;
+}
+$("ex-go").addEventListener("click", exStart);
+$("ex-again").addEventListener("click", () => { $("ex-res").hidden = true; $("ex-conf").scrollIntoView({block: "start"}); });
+$("ex-next").addEventListener("click", () => { exSave(); if (ex.i + 1 < ex.qs.length) { ex.i++; exShow(); } else exFinish(""); });
+$("ex-stop").addEventListener("click", () => { exSave(); exFinish("Examen arrêté."); });
+$("ex-in").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("ex-next").click(); } });
+$("ex-lire").addEventListener("click", () => { const q = ex && ex.qs[ex.i]; if (q) speak(q.k === "ouv" ? $("ex-q").textContent : sayNotion(q.n, false)); });
+
+/* ---------- Visite personnalisée : les outils que l'élève utilise le plus passent en premier ---------- */
+db.use = db.use || {};
+const TOOLS = {
+  notions: ["Importer un cours", "Photo, PowerPoint, PDF, Word ou texte."],
+  blanche: ["Feuille blanche", "Écris tout ce dont tu te souviens, puis vérifie."],
+  discu: ["Discussion", "L'IA t'explique, te questionne, ou tu expliques à un enfant."],
+  carte: ["Carte mentale", "Tes idées, avec tes mots, en carte."],
+  jeux: ["Quiz et jeux", "QCM et jeu « Associer », sans chrono."],
+  examen: ["Examen blanc", "Comme le jour J, avec une note sur 20."],
+  planning: ["Mon planning", "Tes échéances et ta semaine."],
+  lecture: ["Lire et écouter", "Ton cours lu à voix haute, mot par mot."],
+  carnet: ["Carnet de mots", "Les mots difficiles, avec tes définitions."]
+};
+function useTool(k) { if (!TOOLS[k]) return; const u = db.use[k] || {n: 0, last: 0}; u.n++; u.last = Date.now(); db.use[k] = u; save(); }
+function renderTiles() {
+  const order = Object.keys(TOOLS).filter(k => !(k === "carte" && matchMedia("(max-width: 900px)").matches));
+  const sc = k => (db.use[k] ? db.use[k].n : 0) + (db.use[k] && Date.now() - db.use[k].last < 3 * DAY ? 3 : 0);
+  let ks = order.slice().sort((a, b) => sc(b) - sc(a) || order.indexOf(a) - order.indexOf(b));
+  if (!db.notions.length) ks = ["notions", ...ks.filter(k => k !== "notions")];
+  const box = $("tuiles"); box.replaceChildren();
+  ks.slice(0, 4).forEach((k, i) => { const b = document.createElement("button"); b.className = "tile" + (i === 0 ? " hot" : ""); b.dataset.go = k;
+    const t = document.createElement("b"); t.textContent = TOOLS[k][0]; const d = document.createElement("span"); d.textContent = TOOLS[k][1]; if (k === "planning") d.id = "tuile-plan";
+    b.append(t, d); b.addEventListener("click", () => { tab(k); if (k === "notions") $("imp-card").scrollIntoView({block: "start"}); }); box.append(b); });
+  const fav = ks.find(k => db.use[k] && db.use[k].n >= 3);
+  $("pref").hidden = !fav; if (fav) $("pref").textContent = "Tes outils préférés en premier. Celui que tu utilises le plus : " + TOOLS[fav][0] + ".";
+}
+
+/* ---------- Discussion d'apprentissage ----------
+   3 modes : l'IA explique ; l'IA pose des questions ; l'élève explique à un « enfant » joué par l'IA (méthode Feynman).
+   Moteurs, dans l'ordre : l'IA de Chrome sur l'appareil, Claude avec une clé, sinon on ouvre Claude.ai avec la demande prête. */
+const MODEL = "claude-haiku-5-5";
+const DC_BASE = "Tu aides un élève qui est peut-être dys ou TDAH. Français simple, phrases courtes, une idée par phrase, pas de Markdown. Appuie-toi seulement sur les notions données. Ne fais jamais de longs paragraphes. Encourage sans en faire trop.";
+const DC_MODES = {
+  exp: ["L'IA t'explique le cours, simplement, avec un exemple. Ensuite, elle te pose une petite question pour vérifier.", "Explique les notions une par une, en 3 à 4 phrases courtes, avec un exemple de la vie de tous les jours. Après chaque explication, pose une seule question simple pour vérifier que l'élève a compris, puis attends sa réponse."],
+  qst: ["L'IA te pose une question à la fois. Tu réponds. Elle te dit ce qui est juste, ce qui manque, puis passe à la suivante.", "Pose une seule question à la fois sur les notions, de la plus facile à la plus difficile. Attends la réponse. Ensuite : dis en une phrase ce qui est juste, en une phrase ce qui manque, puis pose la question suivante. Ne donne pas la réponse avant que l'élève ait essayé."],
+  enf: ["Tu expliques le cours à Léo, 10 ans, joué par l'IA. Il te demande « ça veut dire quoi ? » dès que tu utilises un mot compliqué. À la fin, il te dit ce qu'il a compris.", "Tu joues Léo, un enfant curieux de 10 ans. L'élève doit t'expliquer les notions. Réponds comme un enfant, en 1 ou 2 phrases. Si l'élève utilise un mot difficile ou un mot du cours sans l'expliquer, demande « ça veut dire quoi, … ? ». Si l'explication est fausse ou incomplète, pose une question naïve qui l'aide à corriger. Quand l'élève écrit « fini », sors du rôle et donne un bilan en 3 lignes : ce qui était clair, l'idée qui manquait, un mot à mieux expliquer."]
+};
+let dc = {mode: "exp", turns: [], sys: ""};
+const dcKey = () => { try { return localStorage.getItem("notea-cle") || ""; } catch (e) { return ""; } };
+async function dcEngine() {
+  let lm = "unavailable"; try { if (typeof LanguageModel !== "undefined") lm = await LanguageModel.availability({expectedInputs: [{type: "text", languages: ["fr"]}], expectedOutputs: [{type: "text", languages: ["fr"]}]}); } catch (e) {}
+  return lm !== "unavailable" ? "builtin" : dcKey() ? "api" : "copy";
+}
+function bubble2(role, text) { const d = document.createElement("div"); d.className = "bub " + (role === "user" ? "moi" : "ia");
+  const w = document.createElement("b"); w.className = "who"; w.textContent = role === "user" ? "Toi" : dc.mode === "enf" ? "Léo" : "Notéa"; const t = document.createElement("span"); t.textContent = text; d.append(w, t); $("dc-thread").append(d); $("dc-thread").scrollTop = 1e9; return t; }
+async function dcAsk() {
+  const eng = await dcEngine(); $("dc-status").textContent = "…"; $("dc-send").disabled = true;
+  try {
+    if (eng === "builtin") {
+      const o = {expectedInputs: [{type: "text", languages: ["fr"]}], expectedOutputs: [{type: "text", languages: ["fr"]}]};
+      const sess = await LanguageModel.create({...o, initialPrompts: [{role: "system", content: dc.sys}, ...dc.turns.slice(0, -1)]});
+      const t = bubble2("assistant", "…"); let out = "";
+      for await (const ch of sess.promptStreaming(dc.turns[dc.turns.length - 1].content, o)) { out = ch.startsWith(out) ? ch : out + ch; t.textContent = out; }
+      dc.turns.push({role: "assistant", content: out});
+    } else if (eng === "api") {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {method: "POST", headers: {"content-type": "application/json", "x-api-key": dcKey(), "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true"},
+        body: JSON.stringify({model: MODEL, max_tokens: 400, system: dc.sys, messages: dc.turns})});
+      if (!r.ok) throw new Error("Erreur " + r.status);
+      const j = await r.json(), out = (j.content || []).map(c => c.text || "").join("").trim(); bubble2("assistant", out); dc.turns.push({role: "assistant", content: out});
+    } else {
+      const text = dc.sys + "\n\n" + dc.turns.map(t => (t.role === "user" ? "Élève : " : "Toi : ") + t.content).join("\n\n");
+      try { await navigator.clipboard.writeText(text); } catch (e) {}
+      const p = document.createElement("p"); p.className = "msg warn"; const a = document.createElement("a"); a.href = "https://claude.ai/new?q=" + encodeURIComponent(text.slice(0, 6000)); a.target = "_blank"; a.rel = "noopener"; a.textContent = "Continuer la discussion dans Claude";
+      p.append("Pas d'IA sur cet appareil. ", a, " (la demande est copiée)."); $("dc-thread").append(p);
+    }
+    if (eng !== "copy" && onceToday("discu-" + dc.mode)) gain(5, "discussion");
+  } catch (e) { $("dc-status").textContent = "La réponse n'a pas pu venir : " + e.message; $("dc-send").disabled = false; return; }
+  $("dc-status").textContent = ""; $("dc-send").disabled = false; $("dc-in").focus();
+}
+function dcStart() {
+  const m = $("dc-mat").value, ns = db.notions.filter(n => !m || matOf(n) === m).slice(0, 25);
+  if (!ns.length) { note("Ajoute d'abord un cours dans « Mes cours ».", "warn"); return; }
+  dc.turns = []; dc.notions = ns; $("dc-thread").replaceChildren(); $("dc-chat").hidden = false; $("dc-hard").hidden = true;
+  dc.sys = DC_BASE + " " + DC_MODES[dc.mode][1] + "\n\nLes notions du cours" + (m ? " de " + m : "") + " :\n" + ns.map(n => "- " + n.text).join("\n");
+  const first = dc.mode === "enf" ? "Bonjour ! Je suis prêt à t'expliquer mon cours." : dc.mode === "qst" ? "Pose-moi la première question." : "Explique-moi la première notion.";
+  dc.turns.push({role: "user", content: first}); bubble2("user", first); dcAsk(); useTool("discu");
+}
+/* Mots difficiles : en mode « enfant », on signale les mots longs recopiés du cours sans être expliqués */
+function hardWords(text) {
+  const course = new Set(dc.notions.flatMap(n => wordsOf(n.text)).filter(w => w.length >= 7));
+  return [...new Set(norm(text).split(/[^a-z]+/).filter(w => w.length >= 8 && course.has(stem(w))))].slice(0, 4);
+}
+$("dc-send").addEventListener("click", () => {
+  const v = $("dc-in").value.trim(); if (!v) return; $("dc-in").value = "";
+  if (dc.mode === "enf") { const h = hardWords(v); $("dc-hard").hidden = !h.length; if (h.length) $("dc-hard").textContent = "Mots peut-être trop difficiles pour un enfant : " + h.join(", ") + ". Essaie de les dire autrement."; }
+  dc.turns.push({role: "user", content: v}); bubble2("user", v); dcAsk();
+});
+$("dc-in").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("dc-send").click(); } });
+$("dc-new").addEventListener("click", dcStart);
+$("dc-go").addEventListener("click", dcStart);
+function dcHelp() { $("dc-help").textContent = DC_MODES[dc.mode][0]; $("dc-in").placeholder = dc.mode === "enf" ? "Explique à Léo… (écris « fini » pour avoir ton bilan)" : "Écris ta réponse…"; }
+document.querySelectorAll("#dc-mode button").forEach(b => b.addEventListener("click", () => { dc.mode = b.dataset.m; document.querySelectorAll("#dc-mode button").forEach(x => x.classList.toggle("on", x === b)); dcHelp(); }));
+dcHelp();
+{ const SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) $("dc-voice").hidden = true; else { let r = null;
+  $("dc-voice").addEventListener("click", () => { if (r) { r.stop(); return; } r = new SR(); r.lang = "fr-FR"; r.continuous = true;
+    r.onresult = e => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) $("dc-in").value += (/\S$/.test($("dc-in").value) ? " " : "") + e.results[i][0].transcript.trim(); };
+    r.onend = () => { r = null; $("dc-voice").textContent = "Dicter"; }; r.start(); $("dc-voice").textContent = "Arrêter la dictée"; }); } }
+
+/* ---------- Imprimer ---------- */
+document.querySelectorAll("[data-print]").forEach(b => b.addEventListener("click", () => {
+  const list = b.dataset.print === "jour" ? todayQueue() : db.notions;
+  if (!list.length) { note("Il n'y a rien à imprimer pour l'instant.", "warn"); return; }
+  const sh = $("sheet"); sh.replaceChildren();
+  const h = document.createElement("h2"); h.textContent = "Notéa · Texte à trous · " + new Date().toLocaleDateString("fr-FR");
+  const ol = document.createElement("ol"); list.forEach(n => { const li = document.createElement("li"); li.append(holeHTML(n, false)); ol.append(li); });
+  const ans = document.createElement("div"); ans.className = "answers";
+  const h2 = document.createElement("h2"); h2.textContent = "Les réponses";
+  const ol2 = document.createElement("ol"); list.forEach(n => { const li = document.createElement("li"); li.append(holeHTML(n, true)); ol2.append(li); });
+  ans.append(h2, ol2); sh.append(h, ol, ans); window.print();
+}));
+
+/* ---------- Onglets, réglages ---------- */
+/* Chaque écran : son titre et son groupe. Sur téléphone, la barre du bas montre les groupes. */
+const TABS = {
+  jour: ["Aujourd'hui", "jour"],
+  notions: ["Mes cours", "apprendre"], lecture: ["Lire et écouter", "apprendre"], blanche: ["Feuille blanche", "apprendre"],
+  carte: ["Carte mentale", "apprendre"], discu: ["Discussion", "apprendre"], carnet: ["Carnet de mots", "apprendre"],
+  jeux: ["Quiz et jeux", "tester"], examen: ["Examen blanc", "tester"],
+  planning: ["Mon planning", "organiser"], imprimer: ["Imprimer", "organiser"],
+  reglages: ["Réglages", "reglages"]
+};
+const lastIn = {};
+function tab(name) {
+  if (!TABS[name]) return;
+  const g = TABS[name][1]; lastIn[g] = name;
+  const mark = (b, on) => { if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); };
+  const sub = $("subnav"), sib = Object.keys(TABS).filter(k => TABS[k][1] === g); sub.replaceChildren();
+  sib.forEach(k => { const b = document.createElement("button"); b.type = "button"; b.dataset.tab = k; b.textContent = TABS[k][0]; sub.append(b); });
+  sub.dataset.n = sib.length;
+  document.querySelectorAll("[data-tab]").forEach(b => mark(b, b.dataset.tab === name));
+  document.querySelectorAll("[data-group]").forEach(b => mark(b, b.dataset.group === g));
+  $("page-t").textContent = TABS[name][0]; document.title = TABS[name][0] + " · Notéa"; window.scrollTo(0, 0);
+  Object.keys(TABS).forEach(t => { $("tab-" + t).hidden = t !== name; });
+  if (name !== "lecture") lecStop();
+  if (name === "notions") { renderList(); const dl = $("mat-list"); dl.replaceChildren(); matsWithNotions().forEach(m => { const o = document.createElement("option"); o.value = m; dl.append(o); }); }
+  if (name === "jour") { renderTiles(); renderToday(); }
+  if (name === "discu") { fillMats($("dc-mat")); dcEngine().then(e => { $("dc-chip").textContent = e === "builtin" ? "IA sur l'appareil" : e === "api" ? "IA : Claude (clé)" : "IA : via Claude.ai"; }); }
+  if (["blanche", "jeux", "examen", "carte", "planning", "lecture", "carnet"].includes(name)) useTool(name);
+  if (name === "blanche") { fbFill(); fbStart(); }
+  if (name === "jeux") fillMats($("jx-mat"));
+  if (name === "examen") fillMats($("ex-mat"));
+  if (name === "carte") { fillMats($("cm-mat")); $("cm-mat").options[0].textContent = "Choisis une matière"; $("cm-text").value = db.maps[$("cm-mat").value || "_"] || ""; drawMap(); }
+  if (name === "planning") { renderMats(); renderActs(); renderPlan(); }
+  if (name === "lecture") renderLecture();
+  if (name === "carnet") renderCarnet();
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-tab]"); if (b) { tab(b.dataset.tab); return; }
+  const g = e.target.closest("[data-group]"); if (g) tab(lastIn[g.dataset.group] || Object.keys(TABS).find(k => TABS[k][1] === g.dataset.group));
+});
+function note(t, k) { const n = $("note"); if (!t) { n.hidden = true; return; } n.className = "msg " + (k || "ok"); n.textContent = t; n.hidden = false; clearTimeout(note.t); note.t = setTimeout(() => n.hidden = true, 5000); }
+$("exam").value = db.exam || "";
+$("exam").addEventListener("change", () => { db.exam = $("exam").value; save(); renderToday(); });
+function plannedToday() { try { const d = plan()[0]; return Math.max(10, d.items.filter(x => x.type === "rev").reduce((s, x) => s + x.t - x.f, 0)); } catch (e) { return 10; } }
+const setMin = m => { db.minutes = m; save(); document.querySelectorAll("#minutes button").forEach(b => b.classList.toggle("on", Number(b.dataset.m) === m)); renderToday(); };
+document.querySelectorAll("#minutes button").forEach(b => b.addEventListener("click", () => setMin(Number(b.dataset.m))));
+setMin(db.minutes === 0 ? 0 : (db.minutes || 10));
+let size = 20; try { size = Number(localStorage.getItem("alto-taille")) || 20; } catch (e) {}
+const setSize = v => { size = Math.min(40, Math.max(16, v)); document.documentElement.style.setProperty("--size", size + "px"); try { localStorage.setItem("alto-taille", size); } catch (e) {} };
+$("moins").addEventListener("click", () => setSize(size - 2)); $("plus").addEventListener("click", () => setSize(size + 2)); setSize(size);
+const LH = {"lh-n": 1.6, "lh-l": 2, "lh-xl": 2.5};
+function setLh(id) { document.documentElement.style.setProperty("--lh", LH[id] || 1.6); Object.keys(LH).forEach(k => $(k).classList.toggle("on", k === id)); try { localStorage.setItem("alto-interligne", id); } catch (e) {} }
+Object.keys(LH).forEach(k => $(k).addEventListener("click", () => setLh(k)));
+try { setLh(localStorage.getItem("alto-interligne") || "lh-n"); } catch (e) { setLh("lh-n"); }
+
+/* ---------- Dictée partout : un bouton « Dicter » à côté de chaque case où l'on écrit ---------- */
+const SRC = window.SpeechRecognition || window.webkitSpeechRecognition;
+function addMic(id, where) {
+  const el = $(id); if (!SRC || !el) return;
+  const b = document.createElement("button"); b.type = "button"; b.className = "mic"; b.textContent = "Dicter"; b.setAttribute("aria-label", "Dicter au lieu d'écrire"); let rec = null;
+  b.addEventListener("click", () => {
+    if (rec) { rec.stop(); return; }
+    rec = new SRC(); rec.lang = "fr-FR"; rec.continuous = true;
+    rec.onresult = e => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) { const v = el.value; el.value = v + (/\S$/.test(v) ? " " : "") + e.results[i][0].transcript.trim(); el.dispatchEvent(new Event("input", {bubbles: true})); } };
+    rec.onend = () => { rec = null; b.textContent = "Dicter"; b.classList.remove("on"); }; rec.onerror = rec.onend;
+    try { rec.start(); b.textContent = "Arrêter la dictée"; b.classList.add("on"); el.focus(); } catch (e) { rec = null; }
+  });
+  (where ? $(where) : null) ? $(where).append(b) : el.insertAdjacentElement("afterend", b);
+}
+addMic("qz-in"); addMic("ex-in"); addMic("ex-ta"); addMic("ajout"); addMic("imp-text"); addMic("cm-text", "cm-check-row");
+
+/* ---------- Règle de lecture : une bande claire suit le doigt ou la souris, le reste de la page est assombri ---------- */
+let regle = false; try { regle = localStorage.getItem("alto-regle") === "1"; } catch (e) {}
+function placeRuler(y) {
+  const lh = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--lh")) || 1.6, band = Math.max(56, size * lh * 1.9), top = Math.max(0, y - band / 2);
+  $("ruler-t").style.top = "0"; $("ruler-t").style.height = top + "px"; $("ruler-b").style.top = (top + band) + "px"; $("ruler-b").style.bottom = "0";
+}
+function setRegle(v) { regle = v; $("ruler-t").hidden = $("ruler-b").hidden = !v; document.querySelectorAll("#regle button").forEach(b => b.classList.toggle("on", (b.dataset.r === "1") === v));
+  try { localStorage.setItem("alto-regle", v ? "1" : "0"); } catch (e) {} if (v) placeRuler(innerHeight / 2); }
+document.querySelectorAll("#regle button").forEach(b => b.addEventListener("click", () => setRegle(b.dataset.r === "1")));
+document.addEventListener("pointermove", e => { if (regle) placeRuler(e.clientY); }, {passive: true});
+document.addEventListener("touchmove", e => { if (regle && e.touches[0]) placeRuler(e.touches[0].clientY); }, {passive: true});
+document.addEventListener("focusin", e => { if (regle && e.target.getBoundingClientRect) { const r = e.target.getBoundingClientRect(); placeRuler(r.top + r.height / 2); } });
+setRegle(regle);
+
+/* Premier passage : on prend tout seul les passages marqués dans Écoute */
+/* À chaque ouverture : les nouveaux passages marqués dans Écoute arrivent tout seuls */
+$("vide-imp").addEventListener("click", () => { tab("notions"); $("imp-card").scrollIntoView({block: "start"}); });
+renderTiles(); renderToday(); renderList(); renderXP();
+$("top-date").textContent = new Date().toLocaleDateString("fr-FR", {weekday: "long", day: "numeric", month: "long"});
+
+/* =====================================================================
+   Les nouveaux outils de Notéa : lire avec la voix, « Je ne comprends pas »,
+   carnet de mots, familles de mots. Puis les réglages d'affichage.
+   ===================================================================== */
+function ACCENT() { return "#5267D8"; }
+db.cours = db.cours || []; db.mots = db.mots || [];
+/* Le texte d'un cours importé est gardé, pour pouvoir le relire et l'écouter. */
+function saveCours(mat, text) {
+  if (!text || db.cours.some(c => c.text === text)) return;
+  db.cours.push({id: uid(), mat, text, created: Date.now(), marks: []});
+}
+
+/* ---------- Lire et écouter ----------
+   Le cours est découpé en phrases. La voix lit, le mot lu s'allume.
+   Une phrase touchée ouvre une petite barre : l'écouter, dire « Je ne comprends pas », ou garder un mot. */
+let lec = {c: null, items: [], sel: null, playing: false, tk: 0};
+function lecStop() {
+  lec.playing = false; lec.tk++;
+  if (kara) kara.stop(); if ("speechSynthesis" in window) speechSynthesis.cancel();
+  const b = $("lec-play"); if (b) b.textContent = "Lire tout le cours";
+}
+function lecPlay(i) {
+  if (!lec.playing || i >= lec.items.length) { lecStop(); return; }
+  const it = lec.items[i], tk = ++lec.tk;
+  it.el.scrollIntoView({block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
+  speakEl(it.el, () => { if (lec.playing && tk === lec.tk) lecPlay(i + 1); });
+}
+function lecSelect(it) {
+  lec.items.forEach(x => x.el.classList.toggle("sel", x === it)); lec.sel = it;
+  $("lec-bar").hidden = !it; $("lec-words").hidden = true;
+  if (it) { const on = lec.c.marks.includes(it.text); $("lec-nc").setAttribute("aria-pressed", on); $("lec-nc").textContent = on ? "✓ Marquée « Je ne comprends pas »" : "Je ne comprends pas"; }
+}
+function lecShow() {
+  lecStop();
+  const c = db.cours.find(x => x.id === $("lec-cours").value) || db.cours[db.cours.length - 1]; lec.c = c; lec.items = [];
+  const box = $("lec-text"); box.replaceChildren();
+  splitSentences(c.text).forEach(par => { const p = document.createElement("p");
+    par.forEach(t => { const sp = document.createElement("span"); sp.className = "lsent" + (c.marks.includes(t) ? " nc" : ""); sp.textContent = t; sp.tabIndex = 0; sp.setAttribute("role", "button");
+      const it = {text: t, el: sp}; lec.items.push(it);
+      const pick = () => lecSelect(lec.sel === it ? null : it);
+      sp.addEventListener("click", pick); sp.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });
+      p.append(sp, " "); });
+    box.append(p); });
+  lecSelect(null);
+}
+function renderMarks() {
+  const box = $("nc-list"); box.replaceChildren(); let n = 0;
+  db.cours.forEach(c => c.marks.forEach(t => { n++;
+    const r = document.createElement("div"); r.className = "nrow";
+    const l = document.createElement("div"), p = document.createElement("p"), w = document.createElement("p"); p.className = "t"; p.textContent = t; w.className = "when"; w.textContent = c.mat; l.append(p, w);
+    const a = document.createElement("div"); a.className = "row";
+    const b1 = document.createElement("button"); b1.textContent = "Demander une explication"; b1.addEventListener("click", () => dcExplain(t, c.mat));
+    const b2 = document.createElement("button"); b2.textContent = "J'ai compris"; b2.addEventListener("click", () => { c.marks = c.marks.filter(x => x !== t); save(); if (onceToday("compris-" + t.slice(0, 20))) gain(2, "compris"); renderLecture(); });
+    a.append(b1, b2); r.append(l, a); box.append(r); }));
+  $("nc-card").hidden = !n; $("nc-n").textContent = n + " phrase" + (n > 1 ? "s" : "");
+}
+function renderLecture() {
+  const s = $("lec-cours"), cur = s.value; s.replaceChildren();
+  db.cours.slice().reverse().forEach(c => { const o = document.createElement("option"); o.value = c.id; o.textContent = c.mat + " · " + new Date(c.created).toLocaleDateString("fr-FR"); s.append(o); });
+  if ([...s.options].some(o => o.value === cur)) s.value = cur;
+  $("lec-vide").hidden = !!db.cours.length; $("lec-card").hidden = !db.cours.length;
+  if (db.cours.length) lecShow();
+  renderMarks();
+}
+$("lec-cours").addEventListener("change", lecShow);
+$("lec-play").addEventListener("click", () => {
+  if (lec.playing) { lecStop(); return; }
+  if (!("speechSynthesis" in window)) { note("La lecture à voix haute n'existe pas sur ce navigateur.", "warn"); return; }
+  lec.playing = true; $("lec-play").textContent = "Arrêter la lecture"; lecPlay(lec.sel ? lec.items.indexOf(lec.sel) : 0);
+});
+$("lec-say").addEventListener("click", () => { if (!lec.sel) return; lecStop(); speakEl(lec.sel.el); });
+$("lec-nc").addEventListener("click", () => {
+  const it = lec.sel; if (!it) return; const on = lec.c.marks.includes(it.text);
+  lec.c.marks = on ? lec.c.marks.filter(x => x !== it.text) : lec.c.marks.concat(it.text); save();
+  it.el.classList.toggle("nc", !on); lecSelect(it); renderMarks();
+  if (!on) note("C'est noté. Tu retrouves cette phrase plus bas, dans « Ce que je ne comprends pas ».", "ok");
+});
+$("lec-mot").addEventListener("click", () => {
+  const it = lec.sel, box = $("lec-words"); if (!it) return; box.replaceChildren(); const seen = new Set();
+  it.text.split(/\s+/).forEach(w => { const c = core(w), k = norm(c); if (c.length < 3 || STOP.has(clean(w)) || seen.has(k)) return; seen.add(k);
+    const b = document.createElement("button"); b.className = "chipbtn"; b.textContent = c; b.addEventListener("click", () => { addMot(c, lec.c.mat, it.text); b.disabled = true; }); box.append(b); });
+  box.hidden = false;
+});
+$("lec-del").addEventListener("click", () => {
+  if (!lec.c || !confirm("Enlever ce cours de la lecture ? Tes notions restent dans ta révision.")) return;
+  db.cours = db.cours.filter(c => c !== lec.c); save(); renderLecture();
+});
+$("lec-imp").addEventListener("click", () => { tab("notions"); $("imp-card").scrollIntoView({block: "start"}); });
+
+/* Demander une explication : la discussion s'ouvre sur la phrase qui bloque. */
+function dcExplain(text, mat) {
+  lecStop(); tab("discu");
+  if ([...$("dc-mat").options].some(o => o.value === mat)) $("dc-mat").value = mat;
+  dc.mode = "exp"; document.querySelectorAll("#dc-mode button").forEach(x => x.classList.toggle("on", x.dataset.m === "exp")); dcHelp();
+  const ns = db.notions.filter(n => matOf(n) === mat).slice(0, 25);
+  dc.turns = []; dc.notions = ns; $("dc-thread").replaceChildren(); $("dc-chat").hidden = false; $("dc-hard").hidden = true;
+  dc.sys = DC_BASE + " L'élève ne comprend pas une phrase de son cours. Explique-la en 3 ou 4 phrases courtes, avec des mots simples et un exemple de la vie de tous les jours. Explique chaque mot difficile. Puis pose une seule question simple pour vérifier qu'il a compris."
+    + (ns.length ? "\n\nLes notions du cours de " + mat + " :\n" + ns.map(n => "- " + n.text).join("\n") : "");
+  const first = "Je ne comprends pas cette phrase : « " + text + " »";
+  dc.turns.push({role: "user", content: first}); bubble2("user", first); dcAsk(); useTool("discu");
+}
+
+/* ---------- Carnet de mots ----------
+   L'élève garde les mots difficiles et écrit la définition avec ses mots.
+   Famille de mots : les mots de ses cours qui commencent par la même racine (à vérifier par l'élève). */
+function addMot(w, mat, src) {
+  w = core(w).trim(); if (!w) return;
+  if (db.mots.some(m => norm(m.w) === norm(w))) { note("« " + w + " » est déjà dans ton carnet.", "warn"); return; }
+  db.mots.push({id: uid(), w, def: "", mat: mat || "", src: src || "", created: Date.now()}); save();
+  if (onceToday("mot-" + norm(w))) gain(1, "mot");
+  note("« " + w + " » est dans ton carnet de mots.", "ok");
+}
+function famille(w) {
+  const k = stem(norm(w)); if (k.length < 5) return [];
+  const root = k.slice(0, Math.max(4, Math.min(6, k.length - 2))), seen = new Set([norm(w)]), out = [];
+  db.cours.forEach(c => c.text.split(/\s+/).forEach(x => { const cw = core(x), n2 = norm(cw);
+    if (n2.length >= 4 && n2.startsWith(root) && !seen.has(n2)) { seen.add(n2); out.push(cw.toLowerCase()); } }));
+  return out.slice(0, 6);
+}
+function renderCarnet() {
+  const box = $("mots"); box.replaceChildren();
+  $("mots-n").textContent = db.mots.length + " mot" + (db.mots.length > 1 ? "s" : "");
+  if (!db.mots.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "Ton carnet est vide. Ajoute un mot ici, ou touche une phrase dans « Lire et écouter »."; box.append(p); return; }
+  db.mots.slice().reverse().forEach(m => {
+    const r = document.createElement("div"); r.className = "mot";
+    const head = document.createElement("div"); head.className = "row";
+    const b = document.createElement("b"); b.className = "motw"; b.textContent = m.w;
+    const say = document.createElement("button"); say.textContent = "🔊 Écouter"; say.setAttribute("aria-label", "Écouter le mot " + m.w); say.addEventListener("click", () => speak(m.w + (m.def ? ". " + m.def : "")));
+    head.append(b, say); if (m.mat) { const c = document.createElement("span"); c.className = "chip"; c.textContent = m.mat; head.append(c); }
+    r.append(head);
+    if (m.src) { const s = document.createElement("p"); s.className = "muted"; s.textContent = "Dans ton cours : « " + m.src + " »"; r.append(s); }
+    const fam = famille(m.w);
+    if (fam.length) { const f = document.createElement("div"); f.className = "kwrow"; const l = document.createElement("span"); l.className = "lab"; l.textContent = "Même famille ?"; f.append(l);
+      fam.forEach(x => { const c = document.createElement("span"); c.className = "chip kw2"; c.textContent = x; f.append(c); }); r.append(f); }
+    const lab = document.createElement("label"); lab.htmlFor = "mot-" + m.id; lab.className = "muted"; lab.textContent = "Ma définition, avec mes mots";
+    const ta = document.createElement("textarea"); ta.id = "mot-" + m.id; ta.value = m.def; ta.placeholder = "Ça veut dire…";
+    ta.addEventListener("input", () => { m.def = ta.value; save(); });
+    const acts = document.createElement("div"); acts.className = "row";
+    const rev = document.createElement("button"); rev.textContent = m.rev ? "✓ Dans ma révision" : "Mettre en révision"; rev.disabled = !!m.rev;
+    rev.addEventListener("click", () => {
+      if (m.def.trim().split(/\s+/).length < 2) { note("Écris d'abord ta définition (au moins 2 mots).", "warn"); ta.focus(); return; }
+      const n = makeNotion(m.w + " : " + m.def.trim(), "manuel", (m.mat || "Carnet de mots") + " · carnet");
+      n.holes = m.w.split(/\s+/).map((_, i) => i * 2); db.notions.push(n); m.rev = true; save(); renderToday(); renderCarnet();
+      note("« " + m.w + " » est dans ta révision du jour.", "ok");
+    });
+    const del = document.createElement("button"); del.textContent = "Supprimer"; del.addEventListener("click", () => { db.mots = db.mots.filter(x => x !== m); save(); renderCarnet(); });
+    acts.append(rev, del); r.append(lab, ta, acts); box.append(r); addMic("mot-" + m.id);
+  });
+}
+$("mot-add").addEventListener("click", () => { const v = $("mot-new").value.trim(); if (!v) return; addMot(v, "", ""); $("mot-new").value = ""; renderCarnet(); });
+$("mot-new").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("mot-add").click(); } });
+
+/* ---------- Réglages d'affichage : thème, police ---------- */
+const lsGet = (k, d) => { try { return localStorage.getItem(k) || d; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+function setTheme(v) { if (v === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = v;
+  document.querySelectorAll("#theme button").forEach(b => b.classList.toggle("on", b.dataset.t === v)); lsSet("notea-theme", v); }
+document.querySelectorAll("#theme button").forEach(b => b.addEventListener("click", () => setTheme(b.dataset.t)));
+setTheme(lsGet("notea-theme", "auto"));
+function setPolice(v) { document.documentElement.dataset.font = v;
+  document.querySelectorAll("#police button").forEach(b => b.classList.toggle("on", b.dataset.f === v)); lsSet("notea-police", v); }
+document.querySelectorAll("#police button").forEach(b => b.addEventListener("click", () => setPolice(b.dataset.f)));
+setPolice(lsGet("notea-police", "systeme"));
+
+/* ---------- Clé pour la discussion (facultatif) : elle reste sur cet appareil ---------- */
+$("cle").value = dcKey() ? "••••••••" : "";
+$("cle-ok").addEventListener("click", () => { const v = $("cle").value.trim(); if (v.startsWith("•")) return;
+  if (v) lsSet("notea-cle", v); else { try { localStorage.removeItem("notea-cle"); } catch (e) {} }
+  $("cle").value = v ? "••••••••" : ""; note(v ? "Clé enregistrée sur cet appareil." : "Clé enlevée.", "ok"); });
+
+/* ---------- Mes données : tout est sur cet appareil. On peut sauvegarder, reprendre ou tout effacer. ---------- */
+$("data-out").addEventListener("click", () => {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(db)], {type: "application/json"}));
+  a.download = "notea-sauvegarde-" + today() + ".json"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+});
+$("data-in").addEventListener("change", async () => {
+  const f = $("data-in").files[0]; if (!f) return;
+  try { const o = JSON.parse(await f.text()); if (!o || !Array.isArray(o.notions)) throw new Error("format");
+    if (!confirm("Remplacer les données de cet appareil par cette sauvegarde ?")) return;
+    localStorage.setItem(KEY, JSON.stringify(o)); location.reload();
+  } catch (e) { note("Ce fichier n'est pas une sauvegarde Notéa.", "err"); }
+  $("data-in").value = "";
+});
+$("data-in").previousElementSibling.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("data-in").click(); } });
+$("data-del").addEventListener("click", () => {
+  if (!confirm("Effacer tous tes cours, tes notions et ta progression sur cet appareil ? C'est définitif.")) return;
+  try { localStorage.removeItem(KEY); } catch (e) {} location.reload();
+});
+
+tab("jour");
+
+})();
