@@ -36,7 +36,7 @@
   --size:20px; --lh:1.6;
   color-scheme:light;
 }
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]):not([data-theme=blanc]){
   --bg:#140E20; --surface:#20172F; --surface-2:#2B2140;
   --text:#F3EEFB; --text-2:#BDB1D6;
   --accent:#C9B6FF; --on-accent:#24163D; --accent-soft:#3A2C5C; --accent-text:#D8CBFF;
@@ -317,3 +317,33 @@ button.primary:hover{background:var(--accent-grad)}
 @media (max-width:900px){.hero{padding-right:var(--space-6);min-height:0}.hero::after{width:110px;right:8px;opacity:.95}.hero .big{padding-right:96px}
   .subnav button[aria-current=page]{background:var(--accent-grad);border-color:transparent}}
 @media (prefers-contrast:more){.tiles .tile{border-color:var(--line-strong)}}
+
+/* ---------- Version 1.1 : moins de friction ---------- */
+.skip{position:absolute;left:-9999px;top:8px;z-index:100;background:var(--accent);color:var(--on-accent);padding:10px 16px;border-radius:var(--radius-md)}
+.skip:focus{left:8px}
+button.brand{border-color:transparent;background:transparent;justify-content:flex-start;width:auto;min-height:44px;border-radius:var(--radius-md);cursor:pointer}
+.side button.brand{font-size:22px;font-weight:700;padding:var(--space-1) var(--space-2);margin-bottom:var(--space-2)}
+.side button.brand[aria-current=page],.top button.brand[aria-current=page]{background:transparent;color:var(--text);box-shadow:none}
+.top button.brand{display:none}
+#theme-quick{min-height:44px}
+.steps{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:var(--space-2);font-size:18px;line-height:1.5}
+.steps li::marker{font-weight:700;color:var(--accent-text)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:var(--space-3)}
+.stat{background:var(--surface-2);border-radius:var(--radius-md);padding:var(--space-4);display:flex;flex-direction:column;gap:4px}
+.stat b{font-size:30px;line-height:1.1;letter-spacing:-.02em} .stat span{font-size:14px;color:var(--text-2);line-height:1.35}
+.pbar{display:grid;grid-template-columns:minmax(90px,150px) minmax(0,1fr) minmax(90px,auto);gap:var(--space-3);align-items:center}
+.pbar .track{height:10px;border-radius:var(--radius-pill);background:var(--surface-2);overflow:hidden}
+.pbar .track i{display:block;height:100%;background:var(--accent);border-radius:var(--radius-pill)}
+.pbar b{font-variant-numeric:tabular-nums;font-size:15px;text-align:right}
+#leech button{margin-left:var(--space-2);min-height:40px}
+@media (max-width:900px){
+  .top button.brand{display:inline-flex;padding:0;font-size:18px;margin-right:auto}
+  .top{align-items:center}
+  .top>div:nth-child(2){width:100%;order:3}
+  .top>.row{order:2}
+  #theme-quick span{position:absolute;left:-9999px}
+  .xpbar{width:44px}
+}
+@media (max-width:900px){.top button.brand{width:auto}}
+/* Thème « Blanc » : fond blanc pur, sans halo. Pour ceux que la couleur de fond gêne. */
+:root[data-theme=blanc]{--bg:#FFFFFF;--surface-2:#F5F2FA;--halo-1:transparent;--halo-2:transparent;--hero-bg:#F1EBFC;--glass:rgba(255,255,255,.82);--glass-line:#E9E1F7;--line:#E3DCF0}

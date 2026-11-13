@@ -15,7 +15,10 @@ Tout reste sur l'appareil de l'élève (localStorage). Rien n'est envoyé.
 
 ## Ce que fait l'appli
 
-- **Aujourd'hui** : la révision du jour (répétition espacée inspirée de FSRS), XP et plumes.
+- **Aujourd'hui** : la révision du jour, XP et plumes. Algorithme FSRS-5 (celui d'Anki) : 3 boutons, 90 % de souvenir visé (95 % la semaine de l'examen), 20 notions par jour au plus, matières mélangées, mode vacances, « Annuler ma dernière note ».
+- **Rappel actif** : on peut écrire ou dicter la réponse avant de la voir.
+- **Mes progrès** : ce que je retiens, mes 7 prochains jours, par matière. Jamais de reproche.
+- **Thèmes** : clair (lilas), blanc, sombre, en un geste depuis le haut de la page.
 - **Mes cours** : import (photo, PDF, Word, PowerPoint, texte), analyse du cours, notions à trous.
 - **Lire et écouter** : le cours lu à voix haute, le mot lu s'allume, marque « Je ne comprends pas ».
 - **Carnet de mots** : mots difficiles, définition avec ses mots, familles de mots.

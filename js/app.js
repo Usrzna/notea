@@ -36,12 +36,26 @@ function makeNotion(text, mark, src, kwl, role) {
   return n;
 }
 
-/* ---------- L'algorithme (inspiré de FSRS, l'algorithme d'Anki) ----------
-   S = stabilité du souvenir, en jours. D = difficulté, de 1 à 10.
-   Chance de s'en souvenir après t jours : R = (1 + t / (9 S))^-1.
-   La notion revient quand R descend au niveau visé (90 %, 95 % la semaine du partiel). */
+/* ---------- L'algorithme de révision : FSRS-5 (celui d'Anki), avec ses réglages par défaut ----------
+   Chaque notion a 3 valeurs :
+     S = stabilité : le nombre de jours pour que la chance de s'en souvenir tombe à 90 % ;
+     D = difficulté, de 1 à 10 ;
+     R = chance de s'en souvenir maintenant : R = (1 + 19/81 × jours / S)^-0,5.
+   La notion revient quand R descend au niveau visé : 90 % (85 % pour le très long terme, 95 % la semaine de l'examen).
+   Se souvenir quand on était près d'oublier renforce plus le souvenir : c'est pour ça qu'on attend le bon moment.
+   3 boutons au lieu de 4 : Raté = « Again », Avec effort = « Good », Facile = « Easy ».
+   Choix de Notéa : « Facile » est plus prudent que dans Anki (5 jours la première fois, bonus de 1,6 au lieu de 3),
+   car on se croit souvent plus sûr de soi qu'on ne l'est. Et jamais plus de 6 mois sans revoir une notion (1 an en très long terme).
+   Un quiz réussi compte « Hard » : reconnaître une réponse est plus facile que la retrouver. */
+const W = [0.40255, 1.18385, 3.173, 15.69105, 7.1949, 0.5345, 1.4604, 0.0046, 1.54575, 0.1192, 1.01925, 1.9395, 0.11, 0.29605, 2.2698, 0.2315, 2.9898, 0.51655, 0.6621];
+const DECAY = -0.5, FACTOR = 19 / 81, EASY0 = 5, EASY_BONUS = 1.6;
+const FG = {1: 1, 2: 3, 3: 4, h: 2};                 // nos boutons → les notes de FSRS
+const MARK_D = {dif: 1, q: 1, rate: 1.5};            // un passage marqué « Difficile » part avec plus de difficulté
 const clampD = d => Math.min(10, Math.max(1, d));
-const retr = (n, now) => n.last ? Math.pow(1 + (now - n.last) / DAY / (9 * Math.max(n.S, 0.1)), -1) : 0;
+const D0 = g => W[4] - Math.exp(W[5] * (g - 1)) + 1;
+const retrAt = (S, days) => Math.pow(1 + FACTOR * days / Math.max(S, 0.01), DECAY);
+const retr = (n, now) => n.last ? retrAt(n.S, Math.max(0, now - n.last) / DAY) : 0;
+const daysFor = (S, r) => S / FACTOR * (Math.pow(r, 1 / DECAY) - 1);
 function examTime() { return db.exam ? Date.parse(db.exam + "T08:00:00") : 0; }
 
 /* Chaque matière a : une échéance (quand avoir fini d'apprendre), un coefficient, un objectif (court, moyen, très long terme) */
@@ -57,29 +71,31 @@ function aim(n, now) {
   const base = hz === "long" ? 0.85 : 0.9;         // très long terme : révisions plus espacées, mais qui continuent
   if (!ex) return base; const d = (ex - now) / DAY; return d >= 0 && d <= 7 ? 0.95 : base;
 }
-const daysFor = (S, r) => 9 * S * (1 / r - 1);
 function preview(n, g, now) {                 // ce que donnerait la réponse g, sans rien changer
-  const c = Object.assign({}, n); schedule(c, g, now); return c;
+  const c = Object.assign({}, n); schedule(c, g, now, true); return c;
 }
-function schedule(n, g, now) {
+function schedule(n, ui, now, dry) {
+  const g = FG[ui] || 3;
   if (!n.last) {                                   // première fois
-    n.S = g === 1 ? 0.3 : g === 2 ? 1.2 : 3.5;
-    n.D = clampD(n.D + (g === 1 ? 1 : g === 2 ? 0.3 : -0.8));
+    n.S = g === 4 ? EASY0 : W[g - 1]; n.D = clampD(D0(g) + (MARK_D[n.mark] || 0));
   } else {
-    const R = retr(n, now);
-    if (g === 1) { n.S = Math.max(0.3, n.S * 0.35); n.D = clampD(n.D + 1); n.lapses++; }
-    else {
-      const ease = (11 - n.D) / 10;                // plus c'est difficile, moins ça grandit
-      const late = 1 + (1 - R) * 1.5;              // retrouvé alors qu'on oubliait : le souvenir se renforce plus
-      n.S = n.S * (1 + ease * (g === 3 ? 2.6 : 1.1) * late);
-      n.D = clampD(n.D + (g === 2 ? 0.25 : -0.5));
+    const days = (now - n.last) / DAY, R = retrAt(n.S, days);
+    if (g === 1) {                                 // oubli : le souvenir retombe, mais pas à zéro
+      n.S = Math.max(0.1, Math.min(n.S, W[11] * Math.pow(n.D, -W[12]) * (Math.pow(n.S + 1, W[13]) - 1) * Math.exp(W[14] * (1 - R)))); n.lapses = (n.lapses || 0) + 1;
+    } else if (days < 0.5) {                       // revue le même jour : petit gain
+      n.S = n.S * Math.exp(W[17] * (g - 3 + W[18]));
+    } else {                                       // retrouvé : plus c'était près de l'oubli, plus le souvenir grandit
+      n.S = n.S * (1 + Math.exp(W[8]) * (11 - n.D) * Math.pow(n.S, -W[9]) * (Math.exp(W[10] * (1 - R)) - 1) * (g === 2 ? W[15] : 1) * (g === 4 ? EASY_BONUS : 1));
     }
+    const d1 = n.D - W[6] * (g - 3) * (10 - n.D) / 9;
+    n.D = clampD(W[7] * D0(4) + (1 - W[7]) * d1);
   }
-  n.reps++; n.last = now;
-  let days = g === 1 ? 0 : Math.max(0.6, daysFor(n.S, aim(n, now)));
+  n.reps = (n.reps || 0) + 1; n.last = now;
+  let days = g === 1 ? 0 : Math.min(matInfo(matOf(n)).hz === "long" ? 365 : 180, Math.max(1, Math.round(daysFor(n.S, aim(n, now)))));
   const ex = dueTime(matOf(n));
   if (ex && now < ex && now + days * DAY > ex - DAY / 2) days = Math.max(0.6, (ex - DAY - now) / DAY);   // revoir la veille du partiel
   n.due = g === 1 ? now : now + days * DAY;
+  if (!dry) { db.log = db.log || []; db.log.push([now, g]); if (db.log.length > 3000) db.log.splice(0, db.log.length - 3000); }
 }
 const when = ms => { const d = (ms - Date.now()) / DAY;
   if (d < 0.02) return "tout de suite"; if (d < 1.5) return "demain"; if (d < 13.5) return `dans ${Math.round(d)} jours`;
@@ -95,6 +111,7 @@ function newPerDay(m, now) {
 }
 function newQuota(now) { let q = 0; new Set(db.notions.map(matOf)).forEach(m => { q += newPerDay(m, now); }); return Math.min(30, Math.max(NEW_MAX, q)); }
 function todayQueue(now = Date.now()) {
+  if (onVacation()) return [];
   const budget = Math.max(60, (db.minutes || plannedToday()) * 60);
   const end = new Date(); end.setHours(23, 59, 59, 999);
   const live = db.notions.filter(n => !finished(n, now));
@@ -103,15 +120,17 @@ function todayQueue(now = Date.now()) {
   const fresh = live.filter(n => !n.last).sort((a, b) => weight(matOf(b), now) - weight(matOf(a), now) || (b.mark === "dif" || b.mark === "q") - (a.mark === "dif" || a.mark === "q") || a.created - b.created)
     .slice(0, Math.max(0, newQuota(now) - db.newToday));
   const out = []; let t = 0;
-  for (const n of due.concat(fresh)) { if (t + secFor(n) > budget && out.length >= 3) break; out.push(n); t += secFor(n); }
-  return out;
+  for (const n of due.concat(fresh)) { if ((t + secFor(n) > budget && out.length >= 3) || out.length >= DAY_MAX) break; out.push(n); t += secFor(n); }
+  return interleave(out);
 }
 function renderToday() {
   const q = todayQueue(), n = q.length;
+  $("bienvenue").hidden = !!db.notions.length; $("accueil").hidden = !db.notions.length && $("seance").hidden;
   const exs = [...new Set(db.notions.map(matOf))].map(m => [m, dueTime(m)]).filter(x => x[1] > Date.now()).sort((a, b) => a[1] - b[1]);
   if ($("tuile-plan")) $("tuile-plan").textContent = exs.length ? `Prochaine échéance : ${exs[0][0]}, ${when(exs[0][1])}.` : "Ajoute tes échéances et tes coefficients : le planning se fait tout seul.";
   $("vide").hidden = !!db.notions.length; $("jour-go").hidden = !db.notions.length;
   if (!db.notions.length) { $("jour-titre").textContent = "Rien à réviser pour l'instant"; $("jour-sous").textContent = "Importe un cours : une photo, un PDF, un Word, un PowerPoint ou un texte."; return; }
+  if (onVacation()) { $("jour-titre").textContent = "Mode vacances"; $("jour-sous").textContent = "Repose-toi. Au retour, tes notions reviennent petit à petit, sans retard à rattraper d'un coup."; $("go").disabled = true; $("jour-suite").textContent = ""; return; }
   if (!n) { const next = Math.min(...db.notions.map(x => x.due || Infinity)); $("jour-titre").textContent = "Tout est à jour"; $("jour-sous").textContent = "Reviens " + when(next) + ". Ton cerveau a besoin de temps pour oublier un peu."; $("go").disabled = true; $("jour-suite").textContent = ""; return; }
   const min = Math.max(1, Math.round(q.reduce((s, x) => s + secFor(x), 0) / 60));
   $("jour-titre").textContent = `${n} notion${n > 1 ? "s" : ""}, ${min} minute${min > 1 ? "s" : ""}`;
@@ -146,7 +165,7 @@ function srcHTML(n) {
 /* ---------- La séance ---------- */
 let queue = [], idx = 0, done = 0, stats = {1: 0, 2: 0, 3: 0}, shown = false;
 function startSession() {
-  queue = todayQueue(); idx = 0; done = 0; stats = {1: 0, 2: 0, 3: 0};
+  queue = todayQueue(); idx = 0; done = 0; stats = {1: 0, 2: 0, 3: 0}; snap = null; $("undo").hidden = true;
   if (!queue.length) return;
   $("accueil").hidden = true; $("tuiles").hidden = true; $("bilan").hidden = true; $("seance").hidden = false; showCard();
 }
@@ -155,17 +174,17 @@ function showCard() {
   $("pos").textContent = `${idx + 1} sur ${queue.length}`;
   $("prog").style.width = Math.round(idx / queue.length * 100) + "%";
   $("q-src").replaceChildren(srcHTML(n)); $("q-text").replaceChildren(holeHTML(n, false));
-  $("voir").hidden = false; $("noter").hidden = true; $("voir").focus();
+  $("voir").hidden = false; $("noter").hidden = true; $("voir").focus(); cardExtras(n);
 }
 function reveal() {
   if (shown) return; shown = true; const n = queue[idx], now = Date.now();
   $("q-text").replaceChildren(holeHTML(n, true));
   $("g2-when").firstChild.textContent = when(preview(n, 2, now).due) + " ";
   $("g3-when").firstChild.textContent = when(preview(n, 3, now).due) + " ";
-  $("voir").hidden = true; $("noter").hidden = false;
+  $("voir").hidden = true; $("noter").hidden = false; revealExtras(n);
 }
 function grade(g) {
-  if (!shown) return; const n = queue[idx];
+  if (!shown) return; const n = queue[idx]; takeSnap(n);
   if (!n.last) db.newToday++;
   schedule(n, g, Date.now()); stats[g]++; save();
   if (onceToday("n" + n.id)) gain(n.reps === 1 ? 3 : 2, "révision");
@@ -185,7 +204,7 @@ $("go").addEventListener("click", startSession);
 $("voir").addEventListener("click", reveal);
 document.querySelectorAll(".grades button").forEach(b => b.addEventListener("click", () => grade(Number(b.dataset.g))));
 $("quit").addEventListener("click", endSession);
-$("bilan-ok").addEventListener("click", () => { $("bilan").hidden = true; $("accueil").hidden = false; $("tuiles").hidden = false; });
+$("bilan-ok").addEventListener("click", () => { $("bilan").hidden = true; $("accueil").hidden = false; $("tuiles").hidden = false; renderToday(); });
 document.addEventListener("keydown", e => {
   if ($("seance").hidden || e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
   if (e.key === " " || e.key === "Enter") { if (!shown) { e.preventDefault(); reveal(); } }
@@ -203,7 +222,7 @@ function renderList() {
     const l = document.createElement("div");
     const t = document.createElement("p"); t.className = "t"; t.append(holeHTML(n, true));
     const w = document.createElement("p"); w.className = "when src"; w.append(srcHTML(n), document.createTextNode(" · " + (n.last ? "revient " + when(n.due) : "nouvelle")));
-    l.append(t, w);
+    if ((n.lapses || 0) >= 4) { const c = document.createElement("span"); c.className = "chip rate"; c.textContent = "À retravailler"; w.append(" ", c); } l.append(t, w);
     const b = document.createElement("button"); b.textContent = "Modifier"; b.addEventListener("click", () => openEditor(n));
     r.append(l, b); box.append(r);
   });
@@ -226,7 +245,7 @@ $("edit-ok").addEventListener("click", () => {
   if (!editHoles.size) { note("Choisis au moins un mot à cacher.", "warn"); return; }
   editing.holes = [...editHoles].sort((a, b) => a - b); save(); $("edit-card").hidden = true; editing = null; renderList(); renderToday(); note("Notion enregistrée.", "ok");
 });
-$("edit-del").addEventListener("click", () => { if (!editing) return; db.notions = db.notions.filter(x => x !== editing); save(); $("edit-card").hidden = true; editing = null; renderList(); renderToday(); note("Notion supprimée.", "ok"); });
+$("edit-del").addEventListener("click", () => { if (!editing) return; db.notions = db.notions.filter(x => x !== editing); save(); $("edit-card").hidden = true; const gone = editing; editing = null; renderList(); renderToday(); noteUndo("Notion supprimée.", () => { db.notions.push(gone); save(); renderList(); renderToday(); }); });
 $("edit-x").addEventListener("click", () => { $("edit-card").hidden = true; editing = null; });
 $("ajout-go").addEventListener("click", () => {
   const v = $("ajout").value.trim(); if (v.split(/\s+/).length < 3) { note("Écris une phrase d'au moins 3 mots.", "warn"); return; }
@@ -502,7 +521,7 @@ $("pick-go").addEventListener("click", () => {
   const exOf = o => { if (!ana || !o) return ""; for (let k = o.idx + 1; k < ana.all.length && k <= o.idx + 3; k++) { const z = ana.all[k]; if (z.sec !== o.sec) break; if (z.role === "ex") return z.text; if (z.ess) break; } return ""; };
   let added = 0; chosen.forEach(x => { if (have.has(x.text)) return; const nn = makeNotion(x.text, "imp", src, ana && ana.kwl, x.o && x.o.role);
     const e = exOf(x.o); if (e) nn.ex = e; db.notions.push(nn); have.add(x.text); added++; });
-  saveCours($("imp-mat").value.trim() || "Cours importé", $("imp-text").value.trim()); save(); useTool("notions"); renderList(); renderToday(); $("pick-card").hidden = true; $("imp-text").value = "";
+  saveCours($("imp-mat").value.trim() || "Cours importé", $("imp-text").value.trim()); save(); useTool("notions"); renderList(); renderToday(); $("pick-card").hidden = true; $("imp-text").value = ""; tab("jour");
   note(`${added} notion${added > 1 ? "s" : ""} ajoutée${added > 1 ? "s" : ""}. Elles sont dans ta révision du jour.`, "ok");
 });
 
@@ -882,7 +901,7 @@ function quizAnswer(btn, good, other) {
   if (good) qz.ok++;
   if (c.t === "trou") $("qz-q").replaceChildren(holeHTML(n, true));
   showWhy(n, good, other, btn ? "" : c.good);
-  if (!n.last || n.due <= now) { if (!n.last) db.newToday++; schedule(n, good ? 2 : 1, now); save(); }
+  if (!n.last || n.due <= now) { if (!n.last) db.newToday++; schedule(n, good ? "h" : 1, now); save(); }
   if (onceToday("n" + n.id)) gainN(1, "quiz");
   $("qz-next").hidden = false; $("qz-next").textContent = qz.i + 1 < qz.list.length ? "Suivante" : "Voir le score"; $("qz-next").focus();
 }
@@ -1202,12 +1221,13 @@ const TABS = {
   notions: ["Mes cours", "apprendre"], lecture: ["Lire et écouter", "apprendre"], blanche: ["Feuille blanche", "apprendre"],
   carte: ["Carte mentale", "apprendre"], discu: ["Discussion", "apprendre"], carnet: ["Carnet de mots", "apprendre"],
   jeux: ["Quiz et jeux", "tester"], examen: ["Examen blanc", "tester"],
-  planning: ["Mon planning", "organiser"], imprimer: ["Imprimer", "organiser"],
+  planning: ["Mon planning", "organiser"], progres: ["Mes progrès", "organiser"], imprimer: ["Imprimer", "organiser"],
   reglages: ["Réglages", "reglages"]
 };
 const lastIn = {};
-function tab(name) {
+function tab(name, fromNav) {
   if (!TABS[name]) return;
+  if (!fromNav && location.hash.slice(1) !== name) { try { history.pushState(null, "", "#" + name); } catch (e) {} }
   const g = TABS[name][1]; lastIn[g] = name;
   const mark = (b, on) => { if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); };
   const sub = $("subnav"), sib = Object.keys(TABS).filter(k => TABS[k][1] === g); sub.replaceChildren();
@@ -1229,6 +1249,8 @@ function tab(name) {
   if (name === "planning") { renderMats(); renderActs(); renderPlan(); }
   if (name === "lecture") renderLecture();
   if (name === "carnet") renderCarnet();
+  if (name === "progres") renderProgres();
+  if (name === "reglages") renderVac();
 }
 document.addEventListener("click", e => {
   const b = e.target.closest("[data-tab]"); if (b) { tab(b.dataset.tab); return; }
@@ -1430,7 +1452,7 @@ function renderCarnet() {
       n.holes = m.w.split(/\s+/).map((_, i) => i * 2); db.notions.push(n); m.rev = true; save(); renderToday(); renderCarnet();
       note("« " + m.w + " » est dans ta révision du jour.", "ok");
     });
-    const del = document.createElement("button"); del.textContent = "Supprimer"; del.addEventListener("click", () => { db.mots = db.mots.filter(x => x !== m); save(); renderCarnet(); });
+    const del = document.createElement("button"); del.textContent = "Supprimer"; del.addEventListener("click", () => { db.mots = db.mots.filter(x => x !== m); save(); renderCarnet(); noteUndo("« " + m.w + " » est supprimé.", () => { db.mots.push(m); save(); renderCarnet(); }); });
     acts.append(rev, del); r.append(lab, ta, acts); box.append(r); addMic("mot-" + m.id);
   });
 }
@@ -1474,6 +1496,127 @@ $("data-del").addEventListener("click", () => {
   try { localStorage.removeItem(KEY); } catch (e) {} location.reload();
 });
 
-tab("jour");
+/* =====================================================================
+   Moins de friction, plus de rappel actif.
+   ===================================================================== */
+const VERSION = "1.1";
+
+/* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
+function noteUndo(t, fn) {
+  note(t, "ok"); const b = document.createElement("button"); b.textContent = "Annuler"; b.style.marginLeft = "12px";
+  b.addEventListener("click", () => { fn(); note("C'est annulé.", "ok"); }); $("note").append(b);
+  clearTimeout(note.t); note.t = setTimeout(() => { $("note").hidden = true; }, 9000);
+}
+
+/* ---------- La file du jour : on mélange les matières (ça fait mieux retenir que tout faire d'un bloc) ---------- */
+var DAY_MAX = 20;                                  // jamais plus de 20 notions par jour : le retard s'étale sur plusieurs jours
+function interleave(list) {
+  const by = new Map(); list.forEach(n => { const m = matOf(n); if (!by.has(m)) by.set(m, []); by.get(m).push(n); });
+  const cols = [...by.values()], out = [];
+  for (let i = 0; out.length < list.length; i++) cols.forEach(c => { if (c[i]) out.push(c[i]); });
+  return out;
+}
+function onVacation() { return !!db.vac && today() <= db.vac; }
+
+/* ---------- Rappel actif : écrire ou dicter la réponse avant de la voir (facultatif) ---------- */
+db.recall = db.recall || "tete";
+function setRecall(v) { db.recall = v; save(); document.querySelectorAll("#rappel button").forEach(b => b.classList.toggle("on", b.dataset.r === v)); }
+document.querySelectorAll("#rappel button").forEach(b => b.addEventListener("click", () => setRecall(b.dataset.r)));
+setRecall(db.recall);
+function cardExtras(n) {
+  const ec = db.recall === "ecrit" && n.holes.length > 0;
+  $("q-type").hidden = !ec; $("q-in").value = ""; $("q-fb").hidden = true;
+  $("leech").hidden = !((n.lapses || 0) >= 4);
+  if (ec) $("q-in").focus();
+}
+function revealExtras(n) {
+  const v = $("q-in").value.trim(); $("q-type").hidden = true;
+  if (db.recall !== "ecrit" || !v) return;
+  const ok = found(new Set(wordsOf(v)), answerOf(n)), fb = $("q-fb");
+  fb.className = "msg " + (ok ? "ok" : "warn"); fb.hidden = false;
+  fb.textContent = ok ? "✓ Tu avais juste. À toi de dire si c'était facile ou avec effort." : "✗ Pas tout à fait : tu as écrit « " + v + " ». Compare avec la réponse surlignée.";
+  document.querySelector(ok ? ".g2" : ".g1").focus();
+}
+$("q-in").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); reveal(); } });
+addMic("q-in");
+$("leech-go").addEventListener("click", () => { const n = queue[idx]; if (!n) return; endSession(); dcExplain(n.text, matOf(n)); });
+
+/* ---------- Annuler la dernière note (comme dans Anki) ---------- */
+let snap = null;
+function takeSnap(n) { snap = {n, copy: JSON.parse(JSON.stringify(n)), idx, done, stats: Object.assign({}, stats), qlen: queue.length, newToday: db.newToday, log: (db.log || []).length}; $("undo").hidden = false; }
+$("undo").addEventListener("click", () => {
+  if (!snap || $("seance").hidden) return;
+  Object.keys(snap.n).forEach(k => { delete snap.n[k]; }); Object.assign(snap.n, snap.copy);
+  queue.length = snap.qlen; idx = snap.idx; done = snap.done; stats = snap.stats; db.newToday = snap.newToday; if (db.log) db.log.length = snap.log;
+  snap = null; $("undo").hidden = true; save(); showCard();
+});
+
+/* ---------- Premier pas : un cours d'exemple, pour comprendre l'appli en 1 minute ---------- */
+const DEMO = `LE DROIT DE PROPRIÉTÉ
+
+Le droit de propriété est le droit de jouir et de disposer des choses de la manière la plus absolue. L'usus est le droit d'utiliser la chose. Le fructus est le droit de percevoir les fruits de la chose. L'abusus est le droit de vendre ou de détruire la chose.
+Par exemple, Paul loue son appartement à Marie pour 600 euros par mois : il exerce son fructus.
+
+L'usufruit
+
+L'usufruit désigne le droit d'utiliser un bien et d'en percevoir les revenus sans en être propriétaire. Le nu-propriétaire conserve seulement l'abusus. À retenir : l'usufruitier doit conserver la substance de la chose. La servitude est une charge imposée à un immeuble au profit d'un autre immeuble.`;
+$("demo").addEventListener("click", () => {
+  tab("notions"); $("imp-mat").value = "Droit civil (exemple)"; $("imp-text").value = DEMO; $("imp-read").click();
+  note("Voilà un cours d'exemple. Notéa a surligné l'essentiel. Appuie sur « Créer les notions », en bas.", "ok");
+});
+$("bv-imp").addEventListener("click", () => { tab("notions"); $("imp-card").scrollIntoView({block: "start"}); });
+
+/* ---------- Mes progrès : ce que je retiens, ce qui arrive. Jamais de reproche, jamais de « série perdue ». ---------- */
+function statTile(big, label) { const d = document.createElement("div"); d.className = "stat"; const b = document.createElement("b"); b.textContent = big; const s = document.createElement("span"); s.textContent = label; d.append(b, s); return d; }
+function renderProgres() {
+  const now = Date.now(), live = db.notions.filter(n => !finished(n, now)), seen = live.filter(n => n.last), fresh = live.length - seen.length;
+  const solid = seen.filter(n => n.S >= 21).length, mem = seen.length ? Math.round(seen.reduce((s, n) => s + retr(n, now), 0) / seen.length * 100) : 0;
+  const box = $("pg-stats"); box.replaceChildren();
+  $("pg-vide").hidden = !!live.length; $("pg-card").hidden = $("pg-week-card").hidden = $("pg-mat-card").hidden = !live.length;
+  if (!live.length) return;
+  box.append(statTile(seen.length ? mem + " %" : "–", "de tes notions revues, tu t'en souviens aujourd'hui (estimation)"),
+    statTile(String(solid), "notion" + (solid > 1 ? "s" : "") + " bien ancrée" + (solid > 1 ? "s" : "") + " (souvenir de plus de 3 semaines)"),
+    statTile(String(seen.length - solid), "en cours d'apprentissage"), statTile(String(fresh), "pas encore vue" + (fresh > 1 ? "s" : "")));
+  const log = (db.log || []).filter(x => x[0] > now - 30 * DAY);
+  $("pg-ok").textContent = log.length >= 5 ? `Sur tes ${log.length} dernières réponses (30 jours), tu as retrouvé la réponse ${Math.round(log.filter(x => x[1] > 1).length / log.length * 100)} fois sur 100. Le but est autour de 90 : en dessous, ce n'est pas grave, les notions reviennent juste plus tôt.` : "Fais quelques révisions : tes résultats apparaîtront ici.";
+  // les 7 prochains jours
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0); const wk = $("pg-week"); wk.replaceChildren(); const counts = [];
+  for (let d = 0; d < 7; d++) { const a = new Date(d0); a.setDate(d0.getDate() + d); const b = new Date(a); b.setDate(a.getDate() + 1);
+    counts.push([a, seen.filter(n => d === 0 ? n.due < b.getTime() : n.due >= a.getTime() && n.due < b.getTime()).length]); }
+  const max = Math.max(1, ...counts.map(c => c[1]));
+  counts.forEach(([a, c], d) => { const r = document.createElement("div"); r.className = "pbar";
+    const l = document.createElement("span"); l.textContent = d === 0 ? "Aujourd'hui" : d === 1 ? "Demain" : a.toLocaleDateString("fr-FR", {weekday: "long"});
+    const t = document.createElement("span"); t.className = "track"; const i = document.createElement("i"); i.style.width = Math.round(Math.min(c, DAY_MAX) / Math.max(max, 1) * 100) + "%"; t.append(i);
+    const v = document.createElement("b"); v.textContent = c + " notion" + (c > 1 ? "s" : ""); r.append(l, t, v); wk.append(r); });
+  // par matière
+  const mb = $("pg-mats"); mb.replaceChildren();
+  matsWithNotions().forEach(m => { const ns = live.filter(n => matOf(n) === m), sn = ns.filter(n => n.last); if (!ns.length) return;
+    const r = document.createElement("div"); r.className = "pbar"; const l = document.createElement("span"); l.textContent = m;
+    const pc = sn.length ? Math.round(sn.reduce((s, n) => s + retr(n, now), 0) / sn.length * 100) : 0;
+    const t = document.createElement("span"); t.className = "track"; const i = document.createElement("i"); i.style.width = pc + "%"; t.append(i);
+    const v = document.createElement("b"); v.textContent = sn.length ? pc + " %" : "à commencer"; r.append(l, t, v); mb.append(r); });
+  const hard = live.filter(n => (n.lapses || 0) >= 4).length;
+  $("pg-hard").hidden = !hard; $("pg-hard").textContent = `${hard} notion${hard > 1 ? "s résistent" : " résiste"} (ratée${hard > 1 ? "s" : ""} 4 fois ou plus). Essaie de ${hard > 1 ? "les" : "la"} reformuler avec tes mots dans « Mes cours », ou demande une explication.`;
+}
+
+/* ---------- Mode vacances : pas de révision, pas de retard à rattraper d'un coup ---------- */
+function renderVac() { $("vac").value = db.vac || ""; $("vac-off").hidden = !onVacation(); $("vac-t").textContent = onVacation() ? "Mode vacances jusqu'au " + new Date(db.vac + "T12:00:00").toLocaleDateString("fr-FR", {day: "numeric", month: "long"}) + "." : "Choisis ta date de retour. Au retour, les notions reviennent petit à petit."; }
+$("vac").addEventListener("change", () => { db.vac = $("vac").value; save(); renderVac(); renderToday(); });
+$("vac-off").addEventListener("click", () => { db.vac = ""; save(); renderVac(); renderToday(); });
+renderVac();
+
+/* ---------- Thème clair ou sombre, en un geste, depuis le haut de la page ---------- */
+const isDark = () => (document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
+const nextTheme = () => isDark() ? "light" : document.documentElement.dataset.theme === "blanc" ? "dark" : "blanc";
+function paintThemeBtn() { const l = {light: "Mode clair", blanc: "Mode blanc", dark: "Mode sombre"}[nextTheme()]; $("theme-quick-t").textContent = l; $("theme-quick").setAttribute("aria-label", "Passer en " + l.toLowerCase()); }
+$("theme-quick").addEventListener("click", () => { setTheme(nextTheme()); paintThemeBtn(); });
+document.querySelectorAll("#theme button").forEach(b => b.addEventListener("click", paintThemeBtn));
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paintThemeBtn);
+paintThemeBtn();
+$("version").textContent = "Version " + VERSION;
+
+/* ---------- Le bouton « retour » du navigateur marche, et la page ouverte est gardée ---------- */
+window.addEventListener("popstate", () => tab(TABS[location.hash.slice(1)] ? location.hash.slice(1) : "jour", true));
+tab(TABS[location.hash.slice(1)] ? location.hash.slice(1) : "jour", true);
 
 })();
