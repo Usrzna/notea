@@ -7,9 +7,12 @@
 <meta name="description" content="Notéa aide les élèves dys et TDAH à comprendre, apprendre et retenir leurs cours. Conçu pour les dys, utile à tous.">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<meta name="theme-color" content="#F6F7F9" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#11141A" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F2EDFC" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#140E20" media="(prefers-color-scheme: dark)">
 <script>try{var t=localStorage.getItem("notea-theme");if(t&&t!=="auto")document.documentElement.dataset.theme=t;var f=localStorage.getItem("notea-police");if(f)document.documentElement.dataset.font=f}catch(e){}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400..900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/notea.css">
 </head>
 <body>
@@ -28,7 +31,7 @@
   <symbol id="i-planning" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></symbol>
   <symbol id="i-imprimer" viewBox="0 0 24 24"><path d="M7.5 8.5v-5h9v5"/><rect x="4" y="8.5" width="16" height="8" rx="2"/><path d="M7.5 14h9v6.5h-9z"/></symbol>
   <symbol id="i-reglages" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/></symbol>
-  <symbol id="i-logo" viewBox="0 0 48 48"><rect x="5" y="15" width="26" height="25" rx="4.5" fill="#3F52BE" stroke="none" transform="rotate(-14 18 27.5)"/><rect x="9" y="12.5" width="26" height="26" rx="4.5" fill="#9AA8FF" stroke="none" transform="rotate(-9 22 25.5)"/><path d="M17 9.5h17.5A4.500 4.500 0 0 1 39 14v15.500l-8 8H17A4.500 4.500 0 0 1 12.500 33V14A4.500 4.500 0 0 1 17 9.500z" fill="#FFFFFF" stroke="#DDE1E8" stroke-width=".8" transform="rotate(-5 26 23.5)"/><g transform="rotate(-5 26 23.5)" stroke-linecap="round" stroke-width="3" fill="none"><path d="M18.500 17h14" stroke="#9AA8FF"/><path d="M18.500 23h13" stroke="#9AA8FF"/><path d="M18.500 29h10" stroke="#E6B45F"/></g></symbol>
+  <symbol id="i-logo" viewBox="0 0 48 48"><rect x="5" y="15" width="26" height="25" rx="4.5" fill="#5B3E8C" stroke="none" transform="rotate(-14 18 27.5)"/><rect x="9" y="12.5" width="26" height="26" rx="4.5" fill="#C9B6FF" stroke="none" transform="rotate(-9 22 25.5)"/><path d="M17 9.5h17.5A4.500 4.500 0 0 1 39 14v15.500l-8 8H17A4.500 4.500 0 0 1 12.500 33V14A4.500 4.500 0 0 1 17 9.500z" fill="#FFFFFF" stroke="#DDE1E8" stroke-width=".8" transform="rotate(-5 26 23.5)"/><g transform="rotate(-5 26 23.5)" stroke-linecap="round" stroke-width="3" fill="none"><path d="M18.500 17h14" stroke="#C9B6FF"/><path d="M18.500 23h13" stroke="#C9B6FF"/><path d="M18.500 29h10" stroke="#E6B45F"/></g></symbol>
 </svg>
 
 <!-- Niveau 2 : navigation en verre (iPad, Mac) -->
@@ -55,7 +58,7 @@
   <header class="top">
     <div class="brand"><svg aria-hidden="true"><use href="#i-logo"/></svg>Notéa</div>
     <div><span class="muted" id="top-date"></span><h1 id="page-t">Aujourd'hui</h1></div>
-    <div class="xp" id="xp" title="Ta progression"><img src="mascotte.png" alt="" width="34" height="34"><b id="xp-lvl">Niv. 1</b><span class="xpbar"><i id="xp-bar"></i></span><span class="muted" id="xp-n">0 XP</span><span class="plume" id="xp-pl">🪶 0</span></div>
+    <div class="xp" id="xp" title="Ta progression"><img src="img/singe-tete.webp" alt="" width="34" height="34"><b id="xp-lvl">Niv. 1</b><span class="xpbar"><i id="xp-bar"></i></span><span class="muted" id="xp-n">0 XP</span><span class="plume" id="xp-pl">🪶 0</span></div>
   </header>
   <div class="subnav" id="subnav" role="navigation" aria-label="Dans cette partie"></div>
   <div id="note" class="msg" role="status" hidden></div>

@@ -1289,7 +1289,7 @@ $("top-date").textContent = new Date().toLocaleDateString("fr-FR", {weekday: "lo
    Les nouveaux outils de Notéa : lire avec la voix, « Je ne comprends pas »,
    carnet de mots, familles de mots. Puis les réglages d'affichage.
    ===================================================================== */
-function ACCENT() { return "#5267D8"; }
+function ACCENT() { return "#5B3E8C"; }
 db.cours = db.cours || []; db.mots = db.mots || [];
 /* Le texte d'un cours importé est gardé, pour pouvoir le relire et l'écouter. */
 function saveCours(mat, text) {

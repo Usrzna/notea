@@ -9,54 +9,63 @@
 /* ---------- Tokens ---------- */
 :root{
   /* couleur — rôles sémantiques, thème clair */
-  --bg:#F6F7F9; --surface:#FFFFFF; --surface-2:#EEF1F5;
-  --text:#171B22; --text-2:#5C6676;
-  --accent:#5267D8; --on-accent:#FFFFFF; --accent-soft:#E6E9FB; --accent-text:#3F52BE;
+  --bg:#F2EDFC; --surface:#FFFFFF; --surface-2:#F4EFFD;
+  --text:#2B2140; --text-2:#625679;
+  --accent:#5B3E8C; --on-accent:#FFFFFF; --accent-soft:#ECE4FB; --accent-text:#4E3380;
+  --accent-grad:linear-gradient(135deg,#6E4FA8 0%,#3B2557 100%);
+  --hero-bg:linear-gradient(135deg,#D8C9FF 0%,#EEE6FF 100%);
+  --p-lilac:#EFE7FF; --p-mint:#DDF3E7; --p-sun:#FFF1C9; --p-rose:#FCE3EC;
   --success:#1D7550; --success-soft:#DCF1E7;
   --warning:#8A5510; --warning-soft:#F8EBD3;
   --danger:#B43A3A; --danger-soft:#F9E1E1;
   --hl:#FFE28A; --on-hl:#171B22;
-  --line:#DDE1E8; --line-strong:#8A93A3;
+  --line:#E9E1F7; --line-strong:#8E7FB0;
   /* matière : verre des commandes flottantes */
-  --glass:rgba(255,255,255,.66); --glass-line:rgba(255,255,255,.9); --glass-shadow:0 12px 36px rgba(23,27,34,.12),0 1px 2px rgba(23,27,34,.06);
-  --halo-1:rgba(82,103,216,.20); --halo-2:rgba(35,132,91,.12);
-  --shadow-1:0 1px 2px rgba(23,27,34,.05),0 4px 14px rgba(23,27,34,.04);
+  --glass:rgba(250,247,255,.72); --glass-line:rgba(255,255,255,.9); --glass-shadow:0 12px 36px rgba(23,27,34,.12),0 1px 2px rgba(23,27,34,.06);
+  --halo-1:rgba(150,112,240,.26); --halo-2:rgba(201,182,255,.34);
+  --shadow-1:0 1px 2px rgba(59,37,87,.05),0 14px 30px -20px rgba(91,62,140,.45);
   /* espacement : grille de 4 pt */
   --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-6:24px; --space-8:32px; --space-12:48px; --space-16:64px;
   /* rayons */
-  --radius-xs:6px; --radius-sm:10px; --radius-md:14px; --radius-lg:20px; --radius-xl:28px; --radius-pill:999px;
+  --radius-xs:8px; --radius-sm:14px; --radius-md:18px; --radius-lg:24px; --radius-xl:32px; --radius-pill:999px;
   /* mouvement */
   --fast:140ms; --std:200ms; --ctx:280ms; --ease:cubic-bezier(.2,.7,.2,1);
   /* typographie : police système */
-  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font:"Nunito",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   /* lecture : réglés par l'élève */
   --size:20px; --lh:1.6;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){
-  --bg:#11141A; --surface:#1B2029; --surface-2:#252C37;
-  --text:#F4F6FA; --text-2:#AAB3C1;
-  --accent:#9AA8FF; --on-accent:#11141A; --accent-soft:#2A3160; --accent-text:#B4BEFF;
+  --bg:#140E20; --surface:#20172F; --surface-2:#2B2140;
+  --text:#F3EEFB; --text-2:#BDB1D6;
+  --accent:#C9B6FF; --on-accent:#24163D; --accent-soft:#3A2C5C; --accent-text:#D8CBFF;
+  --accent-grad:linear-gradient(135deg,#D6C6FF 0%,#B59CF5 100%);
+  --hero-bg:linear-gradient(135deg,#3B2A5E 0%,#2A1F45 100%);
+  --p-lilac:#33264F; --p-mint:#1D3A2C; --p-sun:#3D3218; --p-rose:#40222F;
   --success:#55C58D; --success-soft:#173527;
   --warning:#E6B45F; --warning-soft:#3A2E17;
   --danger:#F07878; --danger-soft:#402022;
   --hl:#6A5417; --on-hl:#F4F6FA;
-  --line:#323A47; --line-strong:#6B7686;
-  --glass:rgba(27,32,41,.62); --glass-line:rgba(255,255,255,.10); --glass-shadow:0 12px 36px rgba(0,0,0,.45),0 1px 2px rgba(0,0,0,.3);
-  --halo-1:rgba(154,168,255,.16); --halo-2:rgba(85,197,141,.08);
+  --line:#382B50; --line-strong:#7E6E9E;
+  --glass:rgba(32,23,47,.66); --glass-line:rgba(255,255,255,.10); --glass-shadow:0 12px 36px rgba(0,0,0,.45),0 1px 2px rgba(0,0,0,.3);
+  --halo-1:rgba(201,182,255,.14); --halo-2:rgba(120,90,200,.12);
   --shadow-1:0 1px 2px rgba(0,0,0,.3);
   color-scheme:dark}}
 :root[data-theme=dark]{
-  --bg:#11141A; --surface:#1B2029; --surface-2:#252C37;
-  --text:#F4F6FA; --text-2:#AAB3C1;
-  --accent:#9AA8FF; --on-accent:#11141A; --accent-soft:#2A3160; --accent-text:#B4BEFF;
+  --bg:#140E20; --surface:#20172F; --surface-2:#2B2140;
+  --text:#F3EEFB; --text-2:#BDB1D6;
+  --accent:#C9B6FF; --on-accent:#24163D; --accent-soft:#3A2C5C; --accent-text:#D8CBFF;
+  --accent-grad:linear-gradient(135deg,#D6C6FF 0%,#B59CF5 100%);
+  --hero-bg:linear-gradient(135deg,#3B2A5E 0%,#2A1F45 100%);
+  --p-lilac:#33264F; --p-mint:#1D3A2C; --p-sun:#3D3218; --p-rose:#40222F;
   --success:#55C58D; --success-soft:#173527;
   --warning:#E6B45F; --warning-soft:#3A2E17;
   --danger:#F07878; --danger-soft:#402022;
   --hl:#6A5417; --on-hl:#F4F6FA;
-  --line:#323A47; --line-strong:#6B7686;
-  --glass:rgba(27,32,41,.62); --glass-line:rgba(255,255,255,.10); --glass-shadow:0 12px 36px rgba(0,0,0,.45),0 1px 2px rgba(0,0,0,.3);
-  --halo-1:rgba(154,168,255,.16); --halo-2:rgba(85,197,141,.08);
+  --line:#382B50; --line-strong:#7E6E9E;
+  --glass:rgba(32,23,47,.66); --glass-line:rgba(255,255,255,.10); --glass-shadow:0 12px 36px rgba(0,0,0,.45),0 1px 2px rgba(0,0,0,.3);
+  --halo-1:rgba(201,182,255,.14); --halo-2:rgba(120,90,200,.12);
   --shadow-1:0 1px 2px rgba(0,0,0,.3);
   color-scheme:dark}
 :root[data-font=arial]{--font:Arial,"Helvetica Neue",Helvetica,sans-serif}
@@ -282,3 +291,29 @@ input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
   #sheet .answers{break-before:page}
   #sheet .answers li{line-height:1.8}
 }
+
+/* =====================================================================
+   Style « collage » (référence de Simon) : lilas pastel, police Nunito,
+   boutons en dégradé violet, singe mascotte, tuiles pastel.
+   Toujours par tokens : clair et sombre.
+   ===================================================================== */
+h1,h2,h3,.brand,.big{font-weight:800}
+h1{font-size:34px}
+.card{border-color:var(--line)}
+.hero{position:relative;overflow:hidden;background:var(--hero-bg);padding-right:clamp(var(--space-8),30%,300px);min-height:220px}
+.hero::after{content:"";position:absolute;right:18px;bottom:-6px;width:min(240px,32%);aspect-ratio:340/303;background:url(../img/singe-hero.webp) center bottom/contain no-repeat;pointer-events:none}
+.hero .eyebrow{align-self:flex-start;text-transform:none;letter-spacing:0;font-size:14px;color:var(--accent-text);background:var(--surface);padding:4px 12px;border-radius:var(--radius-pill)}
+button.primary,a.btn.primary{background:var(--accent-grad);border-color:transparent;font-weight:800;box-shadow:0 12px 24px -14px rgba(59,37,87,.75)}
+button.primary:hover{background:var(--accent-grad)}
+.side button[aria-current=page]{background:var(--accent-soft);color:var(--accent-text);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 22%,transparent)}
+.side button[aria-current=page] .ic{stroke-width:2.2}
+.tile{box-shadow:none}
+.tiles .tile:nth-child(4n+1){background:var(--p-lilac)} .tiles .tile:nth-child(4n+2){background:var(--p-mint)}
+.tiles .tile:nth-child(4n+3){background:var(--p-sun)} .tiles .tile:nth-child(4n+4){background:var(--p-rose)}
+.tiles .tile{border-color:transparent} .tiles .tile.hot{border-color:var(--accent)}
+.bar,.xpbar{background:var(--accent-soft)} .bar i,.xpbar i{background:var(--accent-grad)}
+.seg2{border-radius:var(--radius-pill)} .seg2 button{border-radius:var(--radius-pill)}
+.xp img{background:var(--accent-soft)}
+@media (max-width:900px){.hero{padding-right:var(--space-6);min-height:0}.hero::after{width:110px;right:8px;opacity:.95}.hero .big{padding-right:96px}
+  .subnav button[aria-current=page]{background:var(--accent-grad);border-color:transparent}}
+@media (prefers-contrast:more){.tiles .tile{border-color:var(--line-strong)}}

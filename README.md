@@ -27,7 +27,8 @@ Tout reste sur l'appareil de l'élève (localStorage). Rien n'est envoyé.
 
 ## Design
 
-Charte : Digital Productivity Ecosystem, référentiel v2.0.
+Style « collage » (référence de Simon) : lilas pastel, police Nunito, boutons en dégradé violet, tuiles pastel, singe mascotte (`img/`).
+Base : Digital Productivity Ecosystem, référentiel v2.0.
 Tokens dans `css/notea.css` : couleurs sémantiques clair et sombre, grille de 4 pt, rayons, mouvement.
 Le verre est réservé à la navigation et aux barres d'outils. Le contenu repose sur des surfaces opaques.
 
