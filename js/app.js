@@ -124,7 +124,7 @@ function todayQueue(now = Date.now()) {
   return interleave(out);
 }
 function renderToday() {
-  const q = todayQueue(), n = q.length;
+  const q = todayQueue(), n = q.length; homeStats(q);
   $("bienvenue").hidden = !!db.notions.length; $("accueil").hidden = !db.notions.length && $("seance").hidden;
   const exs = [...new Set(db.notions.map(matOf))].map(m => [m, dueTime(m)]).filter(x => x[1] > Date.now()).sort((a, b) => a[1] - b[1]);
   if ($("tuile-plan")) $("tuile-plan").textContent = exs.length ? `Prochaine échéance : ${exs[0][0]}, ${when(exs[0][1])}.` : "Ajoute tes échéances et tes coefficients : le planning se fait tout seul.";
@@ -133,7 +133,7 @@ function renderToday() {
   if (onVacation()) { $("jour-titre").textContent = "Mode vacances"; $("jour-sous").textContent = "Repose-toi. Au retour, tes notions reviennent petit à petit, sans retard à rattraper d'un coup."; $("go").disabled = true; $("jour-suite").textContent = ""; return; }
   if (!n) { const next = Math.min(...db.notions.map(x => x.due || Infinity)); $("jour-titre").textContent = "Tout est à jour"; $("jour-sous").textContent = "Reviens " + when(next) + ". Ton cerveau a besoin de temps pour oublier un peu."; $("go").disabled = true; $("jour-suite").textContent = ""; return; }
   const min = Math.max(1, Math.round(q.reduce((s, x) => s + secFor(x), 0) / 60));
-  $("jour-titre").textContent = `${n} notion${n > 1 ? "s" : ""}, ${min} minute${min > 1 ? "s" : ""}`;
+  $("jour-titre").textContent = `${n} notion${n > 1 ? "s" : ""} · environ ${min} min`;
   $("jour-sous").textContent = "Arrête-toi quand tu veux. Ce que tu ne fais pas aujourd'hui revient demain.";
   $("jour-suite").textContent = exs.length ? `${exs[0][0]} : examen ${when(exs[0][1])}` : "";
   $("go").disabled = false;
@@ -213,7 +213,7 @@ document.addEventListener("keydown", e => {
 });
 
 /* ---------- Mes notions ---------- */
-function renderList() {
+function renderListOld() {
   const box = $("nlist"); box.replaceChildren();
   $("ncount").textContent = `${db.notions.length} notion${db.notions.length > 1 ? "s" : ""}`;
   if (!db.notions.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "Aucune notion pour l'instant."; box.append(p); return; }
@@ -521,7 +521,7 @@ $("pick-go").addEventListener("click", () => {
   const exOf = o => { if (!ana || !o) return ""; for (let k = o.idx + 1; k < ana.all.length && k <= o.idx + 3; k++) { const z = ana.all[k]; if (z.sec !== o.sec) break; if (z.role === "ex") return z.text; if (z.ess) break; } return ""; };
   let added = 0; chosen.forEach(x => { if (have.has(x.text)) return; const nn = makeNotion(x.text, "imp", src, ana && ana.kwl, x.o && x.o.role);
     const e = exOf(x.o); if (e) nn.ex = e; db.notions.push(nn); have.add(x.text); added++; });
-  saveCours($("imp-mat").value.trim() || "Cours importé", $("imp-text").value.trim()); save(); useTool("notions"); renderList(); renderToday(); $("pick-card").hidden = true; $("imp-text").value = ""; tab("jour");
+  saveCours($("imp-mat").value.trim() || "Cours importé", $("imp-text").value.trim()); save(); useTool("notions"); renderList(); renderToday(); $("pick-card").hidden = true; $("imp-text").value = ""; impOpen = false; tab("jour");
   note(`${added} notion${added > 1 ? "s" : ""} ajoutée${added > 1 ? "s" : ""}. Elles sont dans ta révision du jour.`, "ok");
 });
 
@@ -557,7 +557,7 @@ function fbFill() {
 }
 function fbStart(targets) {
   fb.all = db.notions.filter(n => matOf(n) === $("fb-mat").value);
-  fb.targets = targets || fb.all; $("fb-text").value = ""; fb.help = false; $("fb-cours").hidden = true; $("fb-help").textContent = "Je bloque : voir le cours"; $("fb-res").hidden = true; const p = $("fb-prompt"); p.hidden = false;
+  fb.targets = targets || fb.all; $("fb-text").value = ""; $("fb-intro").hidden = false; fb.help = false; $("fb-cours").hidden = true; $("fb-help").textContent = "Je bloque : voir le cours"; $("fb-res").hidden = true; const p = $("fb-prompt"); p.hidden = false;
   if (!fb.all.length) { p.textContent = "Ajoute d'abord un cours dans « Mes cours »."; $("fb-check").disabled = true; return; }
   $("fb-check").disabled = false;
   if (fb.mode === "une") {
@@ -597,7 +597,7 @@ function fbCheck() {
     $("fb-miss").textContent = "Recommencer avec ce qui manque"; $("fb-zero").textContent = "Recommencer de zéro";
     $("fb-miss").hidden = !fb.miss.length;
   }
-  $("fb-rev").hidden = !fb.miss.length; $("fb-res").hidden = false; $("fb-res").scrollIntoView({block: "start", behavior: "smooth"});
+  $("fb-rev").hidden = !fb.miss.length; $("fb-res").hidden = false; $("fb-intro").hidden = true; $("fb-res").scrollIntoView({block: "start", behavior: "smooth"});
 }
 $("fb-check").addEventListener("click", fbCheck);
 $("fb-mat").addEventListener("change", () => fbStart());
@@ -1125,7 +1125,7 @@ function renderTiles() {
   const box = $("tuiles"); box.replaceChildren();
   ks.slice(0, 4).forEach((k, i) => { const b = document.createElement("button"); b.className = "tile" + (i === 0 ? " hot" : ""); b.dataset.go = k;
     const t = document.createElement("b"); t.textContent = TOOLS[k][0]; const d = document.createElement("span"); d.textContent = TOOLS[k][1]; if (k === "planning") d.id = "tuile-plan";
-    b.append(t, d); b.addEventListener("click", () => { tab(k); if (k === "notions") $("imp-card").scrollIntoView({block: "start"}); }); box.append(b); });
+    b.append(t, d); b.addEventListener("click", () => { if (k === "notions") impOpen = true; tab(k); if (k === "notions") $("imp-card").scrollIntoView({block: "start"}); }); box.append(b); });
   const fav = ks.find(k => db.use[k] && db.use[k].n >= 3);
   $("pref").hidden = !fav; if (fav) $("pref").textContent = "Tes outils préférés en premier. Celui que tu utilises le plus : " + TOOLS[fav][0] + ".";
 }
@@ -1199,7 +1199,7 @@ dcHelp();
 { const SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) $("dc-voice").hidden = true; else { let r = null;
   $("dc-voice").addEventListener("click", () => { if (r) { r.stop(); return; } r = new SR(); r.lang = "fr-FR"; r.continuous = true;
     r.onresult = e => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) $("dc-in").value += (/\S$/.test($("dc-in").value) ? " " : "") + e.results[i][0].transcript.trim(); };
-    r.onend = () => { r = null; $("dc-voice").textContent = "Dicter"; }; r.start(); $("dc-voice").textContent = "Arrêter la dictée"; }); } }
+    r.onend = () => { r = null; $("dc-voice").textContent = "Parler au micro"; }; r.start(); $("dc-voice").textContent = "Arrêter la dictée"; }); } }
 
 /* ---------- Imprimer ---------- */
 document.querySelectorAll("[data-print]").forEach(b => b.addEventListener("click", () => {
@@ -1217,12 +1217,12 @@ document.querySelectorAll("[data-print]").forEach(b => b.addEventListener("click
 /* ---------- Onglets, réglages ---------- */
 /* Chaque écran : son titre et son groupe. Sur téléphone, la barre du bas montre les groupes. */
 const TABS = {
-  jour: ["Aujourd'hui", "jour"],
-  notions: ["Mes cours", "apprendre"], lecture: ["Lire et écouter", "apprendre"], blanche: ["Feuille blanche", "apprendre"],
-  carte: ["Carte mentale", "apprendre"], discu: ["Discussion", "apprendre"], carnet: ["Carnet de mots", "apprendre"],
-  jeux: ["Quiz et jeux", "tester"], examen: ["Examen blanc", "tester"],
-  planning: ["Mon planning", "organiser"], progres: ["Mes progrès", "organiser"], imprimer: ["Imprimer", "organiser"],
-  reglages: ["Réglages", "reglages"]
+  jour: ["Accueil", "accueil"],
+  planning: ["Agenda & planning", "agenda"], progres: ["Mes progrès", "agenda"], imprimer: ["Imprimer", "agenda"],
+  notions: ["Mes cours", "cours"], lecture: ["Lire et écouter", "cours"],
+  notes: ["Mon carnet", "carnet"], blanche: ["Feuille blanche", "carnet"], carte: ["Carte mentale", "carnet"], jeux: ["Quiz et jeux", "carnet"], examen: ["Examen blanc", "carnet"], carnet: ["Carnet de mots", "carnet"],
+  discu: ["Prof particulier", "prof"],
+  acces: ["Accessibilité", "reglages"], reglages: ["Paramètres", "reglages"]
 };
 const lastIn = {};
 function tab(name, fromNav) {
@@ -1235,10 +1235,11 @@ function tab(name, fromNav) {
   sub.dataset.n = sib.length;
   document.querySelectorAll("[data-tab]").forEach(b => mark(b, b.dataset.tab === name));
   document.querySelectorAll("[data-group]").forEach(b => mark(b, b.dataset.group === g));
-  $("page-t").textContent = TABS[name][0]; document.title = TABS[name][0] + " · Notéa"; window.scrollTo(0, 0);
+  $("page-t").textContent = TABS[name][0]; pageHead(name); document.title = TABS[name][0] + " · Notéa"; window.scrollTo(0, 0);
   Object.keys(TABS).forEach(t => { $("tab-" + t).hidden = t !== name; });
   if (name !== "lecture") lecStop();
-  if (name === "notions") { renderList(); const dl = $("mat-list"); dl.replaceChildren(); matsWithNotions().forEach(m => { const o = document.createElement("option"); o.value = m; dl.append(o); }); }
+  if (name === "notes") renderList();
+  if (name === "notions") { renderFolders(); const dl = $("mat-list"); dl.replaceChildren(); matsWithNotions().forEach(m => { const o = document.createElement("option"); o.value = m; dl.append(o); }); }
   if (name === "jour") { renderTiles(); renderToday(); }
   if (name === "discu") { fillMats($("dc-mat")); dcEngine().then(e => { $("dc-chip").textContent = e === "builtin" ? "IA sur l'appareil" : e === "api" ? "IA : Claude (clé)" : "IA : via Claude.ai"; }); }
   if (["blanche", "jeux", "examen", "carte", "planning", "lecture", "carnet"].includes(name)) useTool(name);
@@ -1250,11 +1251,12 @@ function tab(name, fromNav) {
   if (name === "lecture") renderLecture();
   if (name === "carnet") renderCarnet();
   if (name === "progres") renderProgres();
+  if (name === "discu") renderProf();
   if (name === "reglages") renderVac();
 }
 document.addEventListener("click", e => {
   const b = e.target.closest("[data-tab]"); if (b) { tab(b.dataset.tab); return; }
-  const g = e.target.closest("[data-group]"); if (g) tab(lastIn[g.dataset.group] || Object.keys(TABS).find(k => TABS[k][1] === g.dataset.group));
+  const g = e.target.closest("[data-group]"); if (g) tab(Object.keys(TABS).find(k => TABS[k][1] === g.dataset.group));
 });
 function note(t, k) { const n = $("note"); if (!t) { n.hidden = true; return; } n.className = "msg " + (k || "ok"); n.textContent = t; n.hidden = false; clearTimeout(note.t); note.t = setTimeout(() => n.hidden = true, 5000); }
 $("exam").value = db.exam || "";
@@ -1303,8 +1305,8 @@ setRegle(regle);
 
 /* Premier passage : on prend tout seul les passages marqués dans Écoute */
 /* À chaque ouverture : les nouveaux passages marqués dans Écoute arrivent tout seuls */
-$("vide-imp").addEventListener("click", () => { tab("notions"); $("imp-card").scrollIntoView({block: "start"}); });
-renderTiles(); renderToday(); renderList(); renderXP();
+$("vide-imp").addEventListener("click", () => { impOpen = true; tab("notions"); $("imp-card").scrollIntoView({block: "start"}); });
+renderTiles(); renderToday(); renderXP();
 $("top-date").textContent = new Date().toLocaleDateString("fr-FR", {weekday: "long", day: "numeric", month: "long"});
 
 /* =====================================================================
@@ -1394,7 +1396,7 @@ $("lec-del").addEventListener("click", () => {
   if (!lec.c || !confirm("Enlever ce cours de la lecture ? Tes notions restent dans ta révision.")) return;
   db.cours = db.cours.filter(c => c !== lec.c); save(); renderLecture();
 });
-$("lec-imp").addEventListener("click", () => { tab("notions"); $("imp-card").scrollIntoView({block: "start"}); });
+$("lec-imp").addEventListener("click", () => { impOpen = true; tab("notions"); $("imp-card").scrollIntoView({block: "start"}); });
 
 /* Demander une explication : la discussion s'ouvre sur la phrase qui bloque. */
 function dcExplain(text, mat) {
@@ -1499,7 +1501,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.1";
+const VERSION = "1.2";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -1561,10 +1563,10 @@ L'usufruit
 
 L'usufruit désigne le droit d'utiliser un bien et d'en percevoir les revenus sans en être propriétaire. Le nu-propriétaire conserve seulement l'abusus. À retenir : l'usufruitier doit conserver la substance de la chose. La servitude est une charge imposée à un immeuble au profit d'un autre immeuble.`;
 $("demo").addEventListener("click", () => {
-  tab("notions"); $("imp-mat").value = "Droit civil (exemple)"; $("imp-text").value = DEMO; $("imp-read").click();
+  impOpen = true; tab("notions"); $("imp-mat").value = "Droit civil (exemple)"; $("imp-text").value = DEMO; $("imp-read").click();
   note("Voilà un cours d'exemple. Notéa a surligné l'essentiel. Appuie sur « Créer les notions », en bas.", "ok");
 });
-$("bv-imp").addEventListener("click", () => { tab("notions"); $("imp-card").scrollIntoView({block: "start"}); });
+$("bv-imp").addEventListener("click", () => { impOpen = true; tab("notions"); $("imp-card").scrollIntoView({block: "start"}); });
 
 /* ---------- Mes progrès : ce que je retiens, ce qui arrive. Jamais de reproche, jamais de « série perdue ». ---------- */
 function statTile(big, label) { const d = document.createElement("div"); d.className = "stat"; const b = document.createElement("b"); b.textContent = big; const s = document.createElement("span"); s.textContent = label; d.append(b, s); return d; }
@@ -1614,6 +1616,135 @@ document.querySelectorAll("#theme button").forEach(b => b.addEventListener("clic
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paintThemeBtn);
 paintThemeBtn();
 $("version").textContent = "Version " + VERSION;
+
+
+/* =====================================================================
+   Version 1.2 : les écrans de la maquette.
+   Accueil, dossiers de cours, carnet de notions, prof particulier, emploi du temps.
+   ===================================================================== */
+var impOpen = false;
+function svgIc(n) { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("class", "ic"); s.setAttribute("aria-hidden", "true"); const u = document.createElementNS("http://www.w3.org/2000/svg", "use"); u.setAttribute("href", "#i-" + n); s.append(u); return s; }
+function el(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt !== undefined) e.textContent = txt; return e; }
+function mastery(ns, now) { return ns.length ? Math.round(ns.reduce((s, n) => s + retr(n, now), 0) / ns.length * 100) : 0; }
+
+/* ---------- L'en-tête de chaque page : un retour clair, un titre, une phrase ---------- */
+const SUBS = {jour: "Aujourd'hui : un petit moment, rien de plus.", planning: "Tes cours, tes activités, et tes révisions placées toutes seules.", notions: "", notes: "Chaque notion avance toute seule quand tu la réussis.",
+  blanche: "Cahier fermé. Ce qui manque revient plus tard.", discu: "Il te pose les questions, tu réponds avec tes mots.", acces: "Ces réglages sont gratuits, pour toujours.", progres: "Ce que tu retiens. Jamais de reproche."};
+function pageHead(name) {
+  const g = TABS[name][1], first = Object.keys(TABS).find(k => TABS[k][1] === g), b = $("back");
+  b.hidden = name === "jour";
+  if (name === "jour") $("page-t").textContent = "Bonjour" + (db.nom ? " " + db.nom : "") + " 👋";
+  else { const to = name === first ? "jour" : first; b.dataset.tab = to; $("back-t").textContent = TABS[to][0]; }
+  $("page-s").textContent = SUBS[name] || ""; $("page-s").hidden = !SUBS[name];
+}
+
+/* ---------- Accueil : 3 chiffres et la prochaine session ---------- */
+function homeStats(q) {
+  const now = Date.now(), live = db.notions.filter(n => !finished(n, now));
+  $("st-min").textContent = q.length ? Math.max(1, Math.round(q.reduce((s, x) => s + secFor(x), 0) / 60)) : 0;
+  $("st-n").textContent = q.length; $("st-pc").textContent = mastery(live, now) + " %";
+  let h = "–"; try { if (q.length) { const it = plan()[0].items.find(x => x.type === "rev"); h = it ? hm(it.f) : "Libre"; } } catch (e) {}
+  $("st-heure").textContent = h;
+}
+
+/* ---------- Mon prénom ---------- */
+function paintNom() { $("av").textContent = (db.nom || "N").trim().charAt(0).toUpperCase() || "N"; $("av-nom").textContent = db.nom || "Mon profil"; }
+$("nom").value = db.nom || "";
+$("nom").addEventListener("input", () => { db.nom = $("nom").value.trim().slice(0, 30); save(); paintNom(); });
+paintNom();
+
+/* ---------- Mes cours : un dossier par matière ---------- */
+function renderFolders() {
+  const box = $("dossiers"), ms = matsWithNotions(), now = Date.now(); box.replaceChildren();
+  $("dossiers-vide").hidden = !!ms.length;
+  ms.forEach((m, i) => { const ns = db.notions.filter(n => matOf(n) === m), nc = db.cours.filter(c => c.mat === m).length, pc = mastery(ns, now);
+    const b = el("button", "folder f" + (i % 4)); b.setAttribute("aria-label", `${m}, ${ns.length} notions, maîtrise ${pc} %. Ouvrir dans mon carnet`);
+    const tr = el("span", "track"), bar = document.createElement("i"); bar.style.width = Math.max(4, pc) + "%"; tr.append(bar);
+    b.append(svgIc("folder"), el("b", "", m), el("span", "sub", (nc ? nc + " cours · " : "") + ns.length + " notion" + (ns.length > 1 ? "s" : "")), tr, el("span", "sub", "Maîtrise " + pc + " %"));
+    b.addEventListener("click", () => { nMat = m; nFilter = "tout"; tab("notes"); }); box.append(b); });
+  $("imp-card").hidden = ms.length > 0 && !impOpen && $("pick-card").hidden;
+}
+$("imp-open").addEventListener("click", () => { impOpen = true; $("imp-card").hidden = false; $("imp-card").scrollIntoView({block: "start", behavior: "smooth"}); $("imp-mat").focus(); });
+
+/* ---------- Mon carnet de notions : des filtres simples, rangé par matière puis par cours ---------- */
+var nFilter = "tout", nMat = "";
+const catOf = n => (n.lapses || 0) >= 2 || n.mark === "rate" ? "retr" : !n.last ? "new" : n.S >= 7 ? "ok" : "peu";
+const CATS = [["tout", "Toutes"], ["retr", "À retravailler"], ["peu", "Peu compris"], ["ok", "Réussies"]];
+function renderList() {
+  const now = Date.now(), base = db.notions.filter(n => !nMat || matOf(n) === nMat);
+  const nf = $("nf"); nf.replaceChildren();
+  CATS.forEach(([k, l]) => { const c = k === "tout" ? base.length : base.filter(n => catOf(n) === k).length;
+    const b = el("button", "", l + " · " + c); b.setAttribute("aria-pressed", nFilter === k); b.addEventListener("click", () => { nFilter = k; renderList(); }); nf.append(b); });
+  const nm = $("nmat"); nm.hidden = !nMat; nm.replaceChildren();
+  if (nMat) { const x = el("button", "", "Voir toutes les matières"); x.addEventListener("click", () => { nMat = ""; renderList(); }); nm.append("Matière : " + nMat + " ", x); }
+  const list = base.filter(n => nFilter === "tout" || catOf(n) === nFilter), box = $("nlist"); box.replaceChildren();
+  $("ncount").textContent = `${list.length} notion${list.length > 1 ? "s" : ""}`;
+  if (!list.length) { box.append(el("p", "muted", db.notions.length ? "Aucune notion ici pour l'instant." : "Ton carnet est vide. Importe un cours dans « Mes cours ».")); return; }
+  [...new Set(list.map(matOf))].sort().forEach(m => {
+    const all = db.notions.filter(n => matOf(n) === m), mine = list.filter(n => matOf(n) === m), pc = mastery(all, now);
+    const head = el("div", "mhead"), dot = el("span", "dot"); dot.style.background = colOf(m);
+    const tr = el("span", "track"), bar = document.createElement("i"); bar.style.width = Math.max(3, pc) + "%"; tr.append(bar);
+    const line = el("div", "row"); line.append(dot, el("b", "", m), el("span", "muted", `· ${all.length} notion${all.length > 1 ? "s" : ""} · Maîtrise ${pc} %`)); head.append(line, tr); box.append(head);
+    const groups = new Map(); mine.forEach(n => { const k = n.src || m; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(n); });
+    [...groups.entries()].forEach(([src, ns], gi) => {
+      const d = el("details", "chap"); d.open = groups.size === 1 || nFilter !== "tout"; const s = document.createElement("summary");
+      const part = src.includes(" · ") ? src.split(" · ").slice(1).join(" · ") : "";
+      s.append(el("b", "", /^\d/.test(part) ? "Cours du " + part : part === "carnet" ? "Mes mots du carnet" : part || "Notions ajoutées à la main"), el("span", "muted", ns.length + " notion" + (ns.length > 1 ? "s" : ""))); d.append(s);
+      ns.sort((a, b) => (a.due || 0) - (b.due || 0)).forEach(n => {
+        const r = el("div", "nrow"), l = document.createElement("div"), t = el("p", "t"); t.append(holeHTML(n, true));
+        const w = el("p", "when src"); w.append(srcHTML(n), document.createTextNode(" · " + (n.last ? "revient " + when(n.due) : "nouvelle")));
+        const c = catOf(n); if (c === "retr") w.append(" ", el("span", "chip rate", "À retravailler")); else if (c === "ok") w.append(" ", el("span", "chip ok", "✓ Réussie"));
+        l.append(t, w); const b = el("button", "", "Modifier"); b.addEventListener("click", () => openEditor(n)); r.append(l, b); d.append(r); });
+      box.append(d); });
+  });
+}
+
+/* ---------- Prof particulier : une matière, un bouton ---------- */
+function renderProf() {
+  const box = $("prof-list"), ms = matsWithNotions(); box.replaceChildren();
+  if (!ms.length) { box.append(el("p", "muted", "Importe d'abord un cours : le prof s'appuie sur tes notions.")); return; }
+  ms.forEach(m => { const n = db.notions.filter(x => matOf(x) === m).length, r = el("div", "nrow"), l = document.createElement("div");
+    const t = el("p", "t"), dot = el("span", "dot"); dot.style.background = colOf(m); t.append(dot, el("b", "", m)); l.append(t, el("p", "when", n + " notion" + (n > 1 ? "s" : "")));
+    const b = el("button", "primary", "Commencer →"); b.setAttribute("aria-label", "Commencer avec le prof : " + m);
+    b.addEventListener("click", () => { $("dc-mat").value = m; dc.mode = "qst"; document.querySelectorAll("#dc-mode button").forEach(x => x.classList.toggle("on", x.dataset.m === "qst")); dcHelp(); dcStart(); $("dc-chat").scrollIntoView({block: "start", behavior: "smooth"}); });
+    r.append(l, b); box.append(r); });
+}
+const dcSay = t => { if ($("dc-chat").hidden || $("dc-send").disabled) return; $("dc-in").value = t; $("dc-send").click(); };
+$("dc-hint").addEventListener("click", () => dcSay("Donne-moi un indice, sans me donner la réponse."));
+$("dc-exp").addEventListener("click", () => dcSay("Je ne sais pas. Explique-moi simplement, puis repose-moi la question."));
+
+/* ---------- Emploi du temps : une photo ou un fichier, Notéa propose les horaires, l'élève valide ----------
+   La lecture se fait sur l'appareil. On cherche les jours (lundi…) et les horaires (8h-10h, 14:00 à 15:30). */
+const DAY3 = ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"];
+function parseEdt(text) {
+  let day = -1; const out = [];
+  const rxT = /(\d{1,2})\s*(?:h|:)\s*(\d{2})?\s*(?:-|–|—|à|a|>)\s*(\d{1,2})\s*(?:h|:)\s*(\d{2})?/gi, rxD = /\b(lun|mar|mer|jeu|ven|sam|dim)(?:di|credi|redi|edi|anche)?\b\.?/i;
+  text.split(/\n/).forEach(line => { let l = line.trim(); if (!l) return;
+    const d = l.match(rxD); if (d) { day = DAY3.indexOf(d[1].toLowerCase()); l = l.replace(rxD, " "); }
+    const ms = [...l.matchAll(rxT)]; if (day < 0 || !ms.length) return;
+    const label = l.replace(rxT, " ").replace(/[|•·:;,_-]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 40) || "Cours";
+    ms.forEach(m => { const f = Number(m[1]) * 60 + Number(m[2] || 0), t = Number(m[3]) * 60 + Number(m[4] || 0);
+      if (Number(m[1]) < 24 && Number(m[3]) < 24 && t > f && !out.some(x => x.day === day && x.from === hm(f))) out.push({day, from: hm(f), to: hm(t), label}); }); });
+  return out;
+}
+async function takeEdt(input) {
+  const f = input.files[0]; if (!f) return; const box = $("edt-res"); box.hidden = true; $("edt-t").textContent = "Je lis ton emploi du temps… (ça peut prendre une minute)";
+  let found = [];
+  try { found = parseEdt(await readFile(f)); } catch (e) { found = []; }
+  input.value = ""; box.replaceChildren();
+  if (!found.length) { $("edt-t").textContent = "Je n'ai pas réussi à lire les horaires. Écris-les à la main, juste en dessous."; $("acts-t").scrollIntoView({block: "start", behavior: "smooth"}); return; }
+  $("edt-t").textContent = `J'ai trouvé ${found.length} horaire${found.length > 1 ? "s" : ""}. La lecture peut faire des erreurs : décoche ce qui est faux.`;
+  found.sort((a, b) => a.day - b.day || toMin(a.from) - toMin(b.from)).forEach((a, i) => { const lab = el("label", "row"), c = document.createElement("input"); c.type = "checkbox"; c.checked = true; c.dataset.i = i;
+    lab.append(c, `${WD[a.day]} · ${a.from}–${a.to} · ${a.label}`); box.append(lab); });
+  const ok = el("button", "primary", "Ajouter à mon agenda");
+  ok.addEventListener("click", () => { let n = 0; box.querySelectorAll("input:checked").forEach(c => { const a = found[Number(c.dataset.i)];
+      if (!db.acts.some(x => x.day === a.day && x.from === a.from)) { db.acts.push(a); n++; } });
+    save(); renderActs(); renderPlan(); box.hidden = true; $("edt-t").textContent = ""; note(`${n} horaire${n > 1 ? "s" : ""} ajouté${n > 1 ? "s" : ""}. Tes révisions se placent autour.`, "ok"); });
+  const row = el("div", "row"); row.append(ok); box.append(row); box.hidden = false;
+}
+["edt-file", "edt-photo"].forEach(id => { $(id).addEventListener("change", () => takeEdt($(id)));
+  $(id).previousElementSibling.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $(id).click(); } }); });
+$("edt-main").addEventListener("click", () => { $("acts-t").scrollIntoView({block: "start", behavior: "smooth"}); $("act-label").focus(); });
 
 /* ---------- Le bouton « retour » du navigateur marche, et la page ouverte est gardée ---------- */
 window.addEventListener("popstate", () => tab(TABS[location.hash.slice(1)] ? location.hash.slice(1) : "jour", true));

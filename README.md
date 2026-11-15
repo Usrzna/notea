@@ -28,6 +28,15 @@ Tout reste sur l'appareil de l'élève (localStorage). Rien n'est envoyé.
 
 Écoute (transcription en direct) est en pause : elle n'est pas dans cette version.
 
+## Écrans (version 1.2, d'après la maquette de Simon)
+
+- **Accueil** : « Bonjour », 3 chiffres, la prochaine session.
+- **Agenda & planning** : envoyer son emploi du temps (photo ou fichier lu sur l'appareil), planning, progrès, impression.
+- **Mes cours** : un dossier par matière, import, lecture à voix haute.
+- **Mon carnet** : notions triées (à retravailler, peu compris, réussies), feuille blanche, carte mentale, quiz, examen, mots.
+- **Prof particulier** : l'IA pose les questions, avec « Un indice » et « Explique-moi ».
+- **Accessibilité** et **Paramètres**.
+
 ## Design
 
 Style « collage » (référence de Simon) : lilas pastel, police Nunito, boutons en dégradé violet, tuiles pastel, singe mascotte (`img/`).
