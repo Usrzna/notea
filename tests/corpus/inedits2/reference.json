@@ -1,0 +1,21 @@
+{
+  "_lisezmoi": "2e lot de cours INÉDITS, écrits et annotés avant toute exécution du moteur, après la fin des réglages. Mesure finale honnête. Annotations par Claude, à faire valider par des enseignants.",
+  "inedits2/svt-immunite.txt": {
+    "matiere": "SVT", "principale": "lymphocytes",
+    "definitions": ["antigène", "lymphocytes", "anticorps", "réaction inflammatoire", "vaccination"],
+    "relations": [["antigène", "categorie", "molécule"], ["lymphocytes", "categorie", "globules blancs"], ["anticorps", "categorie", "protéine"], ["vaccination", "provoque", "lymphocytes mémoire"], ["réaction inflammatoire", "oppose", "réponse adaptative"]],
+    "acceptables": [["antigène", "prerequis", "vaccination"], ["organisme", "prerequis", "antigène"], ["lymphocytes B", "prerequis", "anticorps"], ["réaction inflammatoire", "categorie", "première réponse"], ["lymphocytes", "prerequis", "anticorps"]]
+  },
+  "inedits2/philo-liberte.txt": {
+    "matiere": "Philosophie", "principale": "liberté",
+    "definitions": ["liberté", "déterminisme", "autonomie"],
+    "relations": [["libre arbitre", "oppose", "déterminisme"], ["liberté", "categorie", "capacité"], ["déterminisme", "categorie", "thèse"], ["liberté", "depend_de", "raison"], ["ignorance des causes", "provoque", "illusion de la liberté"]],
+    "acceptables": [["autonomie", "categorie", "fait"], ["volonté", "prerequis", "liberté"]]
+  },
+  "inedits2/info-boucles.txt": {
+    "matiere": "Informatique", "principale": "boucle",
+    "definitions": ["algorithme", "boucle", "compteur"],
+    "relations": [["algorithme", "categorie", "suite finie d'instructions"], ["boucle", "categorie", "structure"], ["compteur", "categorie", "variable"], ["boucle tant que", "depend_de", "condition"], ["condition", "provoque", "boucle infinie"]],
+    "acceptables": [["instructions", "prerequis", "boucle"], ["instructions", "prerequis", "algorithme"], ["boucle pour", "categorie", "boucle"], ["boucle tant que", "categorie", "boucle"]]
+  }
+}

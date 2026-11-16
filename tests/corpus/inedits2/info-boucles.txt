@@ -1,0 +1,8 @@
+Les boucles en programmation
+Un algorithme est une suite finie d'instructions qui résout un problème.
+Une boucle est une structure qui répète un bloc d'instructions.
+La boucle « pour » répète les instructions un nombre connu de fois.
+La boucle « tant que » répète les instructions tant qu'une condition est vraie.
+La boucle « tant que » dépend d'une condition.
+Une condition toujours vraie provoque une boucle infinie.
+Un compteur est une variable qui compte le nombre de tours.

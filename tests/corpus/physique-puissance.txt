@@ -1,0 +1,9 @@
+La puissance électrique
+La puissance électrique est l'énergie électrique transférée par seconde. Elle s'exprime en watts (W).
+La tension électrique est la différence de potentiel entre deux points d'un circuit. Elle s'exprime en volts (V).
+L'intensité du courant est le débit d'électrons dans un circuit. Elle s'exprime en ampères (A).
+P = U × I
+où P est la puissance électrique, U la tension électrique et I l'intensité du courant.
+L'énergie électrique dépend de la puissance électrique et de la durée de fonctionnement.
+E = P × t
+Exemple : une lampe de 60 W alimentée pendant 2 h consomme une énergie de 120 Wh.

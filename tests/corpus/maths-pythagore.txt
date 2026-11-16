@@ -1,0 +1,12 @@
+Le théorème de Pythagore
+Prérequis :
+- savoir calculer un carré
+- connaître le triangle rectangle
+Un triangle rectangle est un triangle qui possède un angle droit.
+L'hypoténuse est le côté opposé à l'angle droit.
+Théorème de Pythagore : dans un triangle rectangle, le carré de l'hypoténuse est égal à la somme des carrés des deux autres côtés.
+BC² = AB² + AC²
+Le théorème de Pythagore permet de calculer la longueur d'un côté.
+Méthode : pour calculer l'hypoténuse, il faut additionner les carrés des deux autres côtés puis prendre la racine carrée.
+La réciproque du théorème de Pythagore permet de démontrer qu'un triangle est rectangle.
+Exemple : si AB = 3 cm et AC = 4 cm, alors BC = 5 cm.

@@ -1,0 +1,198 @@
+{
+ "_lisezmoi": "Cours INÉDITS : écrits et annotés AVANT de lancer le moteur, jamais utilisés pour régler les motifs. Ce sont eux qui mesurent honnêtement la qualité. Annotations par Claude, à faire valider par des enseignants.",
+ "inedits/geo-mondialisation.txt": {
+  "matiere": "Géographie",
+  "principale": "mondialisation",
+  "definitions": [
+   "mondialisation",
+   "flux",
+   "firmes transnationales"
+  ],
+  "relations": [
+   [
+    "coût des transports",
+    "provoque",
+    "échanges"
+   ],
+   [
+    "mondialisation",
+    "provoque",
+    "inégalités"
+   ],
+   [
+    "espaces ruraux isolés",
+    "oppose",
+    "métropoles"
+   ],
+   [
+    "firmes transnationales",
+    "categorie",
+    "entreprises"
+   ]
+  ],
+  "acceptables": [
+   [
+    "flux",
+    "prerequis",
+    "mondialisation"
+   ],
+   [
+    "firmes transnationales",
+    "associe",
+    "mondialisation"
+   ],
+   [
+    "conteneurisation",
+    "provoque",
+    "marchandises"
+   ]
+  ],
+  "ajoutes_apres_mesure": [
+   [
+    "mondialisation",
+    "categorie",
+    "mise en relation"
+   ],
+   [
+    "flux",
+    "categorie",
+    "déplacements de biens"
+   ]
+  ]
+ },
+ "inedits/francais-figures.txt": {
+  "matiere": "Français",
+  "principale": "figure de style",
+  "definitions": [
+   "figure de style",
+   "comparaison",
+   "métaphore",
+   "personnification",
+   "hyperbole",
+   "anaphore"
+  ],
+  "relations": [
+   [
+    "métaphore",
+    "categorie",
+    "comparaison"
+   ],
+   [
+    "comparaison",
+    "oppose",
+    "métaphore"
+   ],
+   [
+    "hyperbole",
+    "categorie",
+    "exagération"
+   ]
+  ],
+  "acceptables": [
+   [
+    "outil de comparaison",
+    "prerequis",
+    "comparaison"
+   ],
+   [
+    "outil de comparaison",
+    "prerequis",
+    "métaphore"
+   ],
+   [
+    "figure de style",
+    "prerequis",
+    "comparaison"
+   ],
+   [
+    "anaphore",
+    "categorie",
+    "répétition"
+   ]
+  ],
+  "ajoutes_apres_mesure": [
+   [
+    "figure de style",
+    "categorie",
+    "procédé d'écriture"
+   ]
+  ]
+ },
+ "inedits/gestion-bilan.txt": {
+  "matiere": "Gestion",
+  "principale": "bilan",
+  "definitions": [
+   "bilan",
+   "actif",
+   "passif",
+   "capitaux propres"
+  ],
+  "relations": [
+   [
+    "actif",
+    "partie_de",
+    "bilan"
+   ],
+   [
+    "passif",
+    "partie_de",
+    "bilan"
+   ],
+   [
+    "résultat",
+    "depend_de",
+    "produits"
+   ],
+   [
+    "résultat",
+    "depend_de",
+    "charges"
+   ],
+   [
+    "charges",
+    "provoque",
+    "résultat"
+   ]
+  ],
+  "acceptables": [
+   [
+    "produits",
+    "calcule",
+    "résultat"
+   ],
+   [
+    "charges",
+    "calcule",
+    "résultat"
+   ],
+   [
+    "capitaux propres",
+    "prerequis",
+    "passif"
+   ],
+   [
+    "bilan",
+    "categorie",
+    "document"
+   ],
+   [
+    "patrimoine",
+    "prerequis",
+    "bilan"
+   ]
+  ],
+  "ajoutes_apres_mesure": [
+   [
+    "ressources de l'entreprise",
+    "partie_de",
+    "passif"
+   ],
+   [
+    "capitaux propres",
+    "categorie",
+    "ressources"
+   ]
+  ]
+ },
+ "_ajoutes": "« ajoutes_apres_mesure » : liens justes (phrases « X est un Y » écrites dans le cours) oubliés dans l'annotation de départ, ajoutés après la 1re mesure. Ils comptent pour la précision."
+}

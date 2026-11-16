@@ -1,0 +1,399 @@
+{
+ "_lisezmoi": "Annotations de référence écrites à la main par Claude à partir de la lecture des cours, PAS encore validées par des enseignants. 'relations' = liens que le moteur doit trouver ; 'acceptables' = autres liens justes (comptent pour la précision). Format d'un lien : [notion A, type, notion B].",
+ "droit-propriete.txt": {
+  "matiere": "Droit",
+  "principale": "droit de propriété",
+  "definitions": [
+   "droit de propriété",
+   "usus",
+   "fructus",
+   "abusus",
+   "usufruit",
+   "servitude"
+  ],
+  "relations": [
+   [
+    "usus",
+    "categorie",
+    "droit"
+   ],
+   [
+    "fructus",
+    "categorie",
+    "droit"
+   ],
+   [
+    "abusus",
+    "categorie",
+    "droit"
+   ],
+   [
+    "droit de propriété",
+    "categorie",
+    "droit"
+   ]
+  ],
+  "acceptables": [
+   [
+    "usufruit",
+    "categorie",
+    "droit"
+   ],
+   [
+    "droit",
+    "prerequis",
+    "usufruit"
+   ]
+  ],
+  "ajoutes_apres_mesure": [
+   [
+    "servitude",
+    "categorie",
+    "charge"
+   ]
+  ]
+ },
+ "svt-photosynthese.txt": {
+  "matiere": "SVT",
+  "principale": "photosynthèse",
+  "definitions": [
+   "photosynthèse",
+   "chlorophylle",
+   "chloroplastes"
+  ],
+  "relations": [
+   [
+    "photosynthèse",
+    "lieu",
+    "chloroplastes"
+   ],
+   [
+    "phase lumineuse",
+    "partie_de",
+    "photosynthèse"
+   ],
+   [
+    "phase sombre",
+    "partie_de",
+    "photosynthèse"
+   ],
+   [
+    "phase lumineuse",
+    "precede",
+    "phase sombre"
+   ],
+   [
+    "intensité de la photosynthèse",
+    "depend_de",
+    "lumière"
+   ],
+   [
+    "lumière",
+    "provoque",
+    "photosynthèse"
+   ],
+   [
+    "photosynthèse",
+    "provoque",
+    "production de dioxygène"
+   ],
+   [
+    "respiration cellulaire",
+    "oppose",
+    "photosynthèse"
+   ]
+  ],
+  "acceptables": [
+   [
+    "phase",
+    "partie_de",
+    "photosynthèse"
+   ],
+   [
+    "matière organique",
+    "prerequis",
+    "photosynthèse"
+   ],
+   [
+    "dioxyde de carbone",
+    "prerequis",
+    "photosynthèse"
+   ],
+   [
+    "lumière",
+    "prerequis",
+    "photosynthèse"
+   ],
+   [
+    "lumière",
+    "prerequis",
+    "chlorophylle"
+   ],
+   [
+    "intensité de la photosynthèse",
+    "depend_de",
+    "dioxyde de carbone"
+   ],
+   [
+    "intensité de la photosynthèse",
+    "depend_de",
+    "température"
+   ]
+  ],
+  "ajoutes_apres_mesure": [
+   [
+    "photosynthèse",
+    "categorie",
+    "réaction"
+   ],
+   [
+    "chlorophylle",
+    "categorie",
+    "pigment"
+   ],
+   [
+    "chloroplastes",
+    "categorie",
+    "organites"
+   ]
+  ]
+ },
+ "histoire-ww1.txt": {
+  "matiere": "Histoire",
+  "principale": "guerre totale",
+  "definitions": [
+   "guerre totale",
+   "guerre de tranchées"
+  ],
+  "relations": [
+   [
+    "assassinat de l'archiduc François-Ferdinand",
+    "provoque",
+    "déclenchement de la guerre"
+   ],
+   [
+    "système des alliances",
+    "provoque",
+    "extension du conflit"
+   ],
+   [
+    "Triple-Alliance",
+    "oppose",
+    "Triple-Entente"
+   ],
+   [
+    "guerre de tranchées",
+    "categorie",
+    "guerre de position"
+   ],
+   [
+    "bataille de Verdun",
+    "precede",
+    "armistice"
+   ],
+   [
+    "armistice",
+    "precede",
+    "traité de Versailles"
+   ]
+  ],
+  "acceptables": [
+   [
+    "bataille de Verdun",
+    "exemple_de",
+    "violence de la guerre de position"
+   ],
+   [
+    "bataille de Verdun",
+    "exemple_de",
+    "guerre de position"
+   ],
+   [
+    "assassinat de l'archiduc François-Ferdinand",
+    "precede",
+    "bataille de Verdun"
+   ]
+  ]
+ },
+ "maths-pythagore.txt": {
+  "matiere": "Mathématiques",
+  "principale": "théorème de Pythagore",
+  "definitions": [
+   "triangle rectangle",
+   "hypoténuse",
+   "théorème de Pythagore"
+  ],
+  "relations": [
+   [
+    "hypoténuse",
+    "categorie",
+    "côté"
+   ],
+   [
+    "théorème de Pythagore",
+    "calcule",
+    "longueur"
+   ]
+  ],
+  "acceptables": [
+   [
+    "triangle rectangle",
+    "prerequis",
+    "théorème de Pythagore"
+   ],
+   [
+    "hypoténuse",
+    "prerequis",
+    "théorème de Pythagore"
+   ],
+   [
+    "angle droit",
+    "prerequis",
+    "triangle rectangle"
+   ],
+   [
+    "angle droit",
+    "prerequis",
+    "hypoténuse"
+   ],
+   [
+    "côté",
+    "prerequis",
+    "théorème de Pythagore"
+   ]
+  ],
+  "ajoutes_apres_mesure": [
+   [
+    "triangle rectangle",
+    "categorie",
+    "triangle"
+   ]
+  ]
+ },
+ "eco-inflation.txt": {
+  "matiere": "Économie",
+  "principale": "inflation",
+  "definitions": [
+   "inflation",
+   "déflation",
+   "taux d'intérêt"
+  ],
+  "relations": [
+   [
+    "déflation",
+    "oppose",
+    "inflation"
+   ],
+   [
+    "pouvoir d'achat",
+    "depend_de",
+    "revenu"
+   ],
+   [
+    "pouvoir d'achat",
+    "depend_de",
+    "prix"
+   ],
+   [
+    "inflation",
+    "provoque",
+    "pouvoir d'achat"
+   ],
+   [
+    "demande",
+    "provoque",
+    "prix"
+   ],
+   [
+    "indice des prix à la consommation",
+    "calcule",
+    "inflation"
+   ],
+   [
+    "banque centrale",
+    "provoque",
+    "taux d'intérêt"
+   ]
+  ],
+  "acceptables": [
+   [
+    "taux d'intérêt",
+    "categorie",
+    "prix"
+   ],
+   [
+    "prix",
+    "prerequis",
+    "inflation"
+   ],
+   [
+    "prix",
+    "prerequis",
+    "déflation"
+   ],
+   [
+    "taux d'intérêt",
+    "provoque",
+    "crédit"
+   ]
+  ],
+  "ajoutes_apres_mesure": [
+   [
+    "taux d'intérêt",
+    "categorie",
+    "prix de l'argent"
+   ]
+  ]
+ },
+ "physique-puissance.txt": {
+  "matiere": "Physique-chimie",
+  "principale": "puissance électrique",
+  "definitions": [
+   "puissance électrique",
+   "tension électrique",
+   "intensité du courant"
+  ],
+  "relations": [
+   [
+    "tension électrique",
+    "calcule",
+    "puissance électrique"
+   ],
+   [
+    "intensité du courant",
+    "calcule",
+    "puissance électrique"
+   ],
+   [
+    "énergie électrique",
+    "depend_de",
+    "puissance électrique"
+   ]
+  ],
+  "acceptables": [
+   [
+    "puissance électrique",
+    "categorie",
+    "énergie électrique"
+   ],
+   [
+    "énergie électrique",
+    "depend_de",
+    "durée de fonctionnement"
+   ]
+  ],
+  "ajoutes_apres_mesure": [
+   [
+    "tension électrique",
+    "categorie",
+    "différence de potentiel"
+   ],
+   [
+    "intensité du courant",
+    "categorie",
+    "débit d'électrons"
+   ]
+  ]
+ },
+ "_ajoutes": "« ajoutes_apres_mesure » : liens justes (phrases « X est un Y » écrites dans le cours) oubliés dans l'annotation de départ, ajoutés après la 1re mesure. Ils comptent pour la précision."
+}

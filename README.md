@@ -26,6 +26,11 @@ Tout reste sur l'appareil de l'élève (localStorage). Rien n'est envoyé.
 - **Quiz et jeux**, **Examen blanc** (avec tiers-temps).
 - **Mon planning**, **Imprimer**, **Réglages** d'accessibilité (toujours gratuits).
 
+## Moteur de compréhension (v1.4)
+
+`js/moteur/` : lit un cours (pages, titres, tableaux, formules), trouve les notions, leurs liens et leur importance, construit un graphe, génère des questions reliées au cours, des schémas, et suit la maîtrise de l'élève. Sans serveur, sans IA obligatoire.
+Détails : `docs/MOTEUR.md`. Où on en est : `docs/MOTEUR-AVANCEMENT.md`. Tests : `node --test tests/moteur.test.js` et `node tests/mesures.js`.
+
 Écoute (transcription en direct) est en pause : elle n'est pas dans cette version.
 
 ## Écrans (version 1.2, d'après la maquette de Simon)

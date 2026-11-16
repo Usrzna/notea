@@ -1,0 +1,12 @@
+L'immunité
+A. Les défenses de l'organisme
+Un antigène est une molécule reconnue comme étrangère par l'organisme.
+Les lymphocytes sont des globules blancs qui participent à la défense de l'organisme.
+Un anticorps est une protéine produite par les lymphocytes B.
+La réaction inflammatoire est la première réponse de l'organisme à une infection.
+B. La vaccination
+La vaccination consiste à injecter un antigène inoffensif pour préparer l'organisme.
+La vaccination entraîne la production de lymphocytes mémoire.
+Les lymphocytes mémoire permettent une réponse plus rapide lors d'une nouvelle infection.
+Contrairement à la réaction inflammatoire, la réponse adaptative est spécifique d'un antigène.
+Par exemple, le vaccin contre la grippe est préparé chaque année.

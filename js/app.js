@@ -274,7 +274,9 @@ async function readFile(f) {
   const name = f.name.toLowerCase();
   if (name.endsWith(".docx")) {
     if (typeof mammoth === "undefined") await loadScript("lib/mammoth.browser.min.js");
-    return (await mammoth.extractRawText({arrayBuffer: await f.arrayBuffer()})).value;
+    const buf = await f.arrayBuffer();
+    try { return docxEnTexte((await mammoth.convertToHtml({arrayBuffer: buf})).value); }   // garde titres, gras, listes et tableaux
+    catch (e) { return (await mammoth.extractRawText({arrayBuffer: buf})).value; }
   }
   if (name.endsWith(".pdf")) {
     const pdfjs = await import("./lib/pdf.min.mjs");
@@ -283,6 +285,7 @@ async function readFile(f) {
     let out = "";
     for (let p = 1; p <= doc.numPages; p++) {
       const c = await (await doc.getPage(p)).getTextContent();
+      if (doc.numPages > 1) out += "— page " + p + " —\n";          // repère de page : le moteur garde la provenance
       c.items.forEach(it => { out += it.str + (it.hasEOL ? "\n" : ""); }); out += "\n\n";
     }
     return out;
@@ -292,6 +295,17 @@ async function readFile(f) {
   if (/^image\//.test(f.type) || /\.(jpe?g|png|heic|webp)$/.test(name)) return readPhoto(f);
   if (name.endsWith(".doc")) throw new Error("ancien format Word");
   return await f.text();
+}
+/* Word en HTML → texte structuré pour le moteur : « # titre », « **gras** », « - élément », « a | b » pour les tableaux. */
+function docxEnTexte(html) {
+  const d = new DOMParser().parseFromString(html, "text/html"), out = [];
+  const txt = el => { let t = ""; el.childNodes.forEach(n => { t += n.nodeType === 3 ? n.textContent : /^(STRONG|B)$/.test(n.nodeName) && n.textContent.trim() ? "**" + n.textContent.trim() + "** " : txt(n); }); return t.replace(/\s+/g, " ").trim(); };
+  d.body.childNodes.forEach(el => { if (el.nodeType !== 1) return; const n = el.nodeName;
+    if (/^H[1-6]$/.test(n)) out.push("", "#".repeat(Math.min(3, Number(n[1]))) + " " + el.textContent.trim(), "");
+    else if (n === "UL" || n === "OL") el.querySelectorAll(":scope > li").forEach((li, i) => out.push((n === "OL" ? (i + 1) + ". " : "- ") + txt(li)));
+    else if (n === "TABLE") { out.push(""); el.querySelectorAll("tr").forEach(tr => out.push("| " + [...tr.children].map(td => td.textContent.trim().replace(/\|/g, "/")).join(" | ") + " |")); out.push(""); }
+    else { const t = txt(el); if (t) out.push(t); } });
+  return out.join("\n").replace(/\n{3,}/g, "\n\n");
 }
 /* PowerPoint (.pptx) : c'est un fichier zip. On lit le texte de chaque diapositive, dans l'ordre. */
 async function unzip(buf, keep) {
@@ -312,7 +326,7 @@ async function unzip(buf, keep) {
 async function readPptx(buf) {
   const files = await unzip(buf, n => /^ppt\/slides\/slide\d+\.xml$/.test(n));
   const ent = s => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
-  return Object.keys(files).sort((a, b) => parseInt(a.match(/\d+/)) - parseInt(b.match(/\d+/))).map(k =>
+  return Object.keys(files).sort((a, b) => parseInt(a.match(/\d+/)) - parseInt(b.match(/\d+/))).map((k, i) => "— diapo " + (i + 1) + " —\n" +
     files[k].split("</a:p>").map(par => (par.match(/<a:t>([^<]*)<\/a:t>/g) || []).map(t => ent(t.slice(5, -6))).join("")).filter(x => x.trim()).join("\n")
   ).join("\n\n");
 }
@@ -322,12 +336,16 @@ async function readPhoto(f) {
   const r = await Tesseract.recognize(f, "fra", {logger: m => { if (m.status === "recognizing text") $("imp-file-t").textContent = "Je lis la photo… " + Math.round(m.progress * 100) + " %"; }});
   return r.data.text;
 }
+let impPhoto = false;
+// Texte pour la lecture à voix haute et l'ancien découpage : sans repères de page ni marques de gras.
+const sansReperes = t => t.replace(/^\s*[—–-]{1,3}\s*(page|photo|diapo|diapositive|feuille)\s+\d+\s*[—–-]{0,3}\s*$/gim, "").replace(/\*\*|__|==/g, "").replace(/^#{1,6}\s+/gm, "").replace(/\n{3,}/g, "\n\n").trim();
 async function takeFile(input) {
   const f = input.files[0]; if (!f) return;
   $("imp-file-t").textContent = "Lecture de « " + f.name + " »…";
   try {
-    const t = await readFile(f);
+    let t = await readFile(f);
     const prev = $("imp-text").value.trim();     // plusieurs photos à la suite : le texte s'ajoute
+    if (/^image\//.test(f.type) || /\.(jpe?g|png|heic|webp)$/i.test(f.name)) { impPhoto = true; t = "— photo " + ((prev.match(/^— photo \d+ —$/gm) || []).length + 1) + " —\n" + t; }
     $("imp-text").value = (prev ? prev + "\n\n" : "") + t.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
     if (!$("imp-mat").value && !/^image\//.test(f.type)) $("imp-mat").value = f.name.replace(/\.[^.]+$/, "");
     $("imp-file-t").textContent = /^image\//.test(f.type) ? "Photo lue. Vérifie le texte (la lecture d'une photo peut faire des erreurs), ajoute une autre photo ou appuie sur « Lire le cours »." : "« " + f.name + " » est lu. Vérifie le texte, puis appuie sur « Lire le cours ».";
@@ -508,7 +526,8 @@ $("v-ess").addEventListener("click", () => setView("ess"));
 $("imp-read").addEventListener("click", () => {
   const text = $("imp-text").value.trim();
   if (text.split(/\s+/).length < 5) { note("Colle un cours ou choisis un fichier d'abord.", "warn"); return; }
-  ana = analyse(text); renderAna();
+  ana = analyse(sansReperes(text)); renderAna();
+  lancerMoteur(text, $("imp-mat").value.trim());
   autoPick(); $("pick-card").hidden = false; $("pick-card").scrollIntoView({block: "start", behavior: "smooth"});
 });
 function countPicks() { const n = picks.filter(x => x.on).length; $("pick-n").textContent = `${n} phrase${n > 1 ? "s" : ""} surlignée${n > 1 ? "s" : ""}`; $("pick-go").textContent = n ? `Créer ${n} notion${n > 1 ? "s" : ""}` : "Créer les notions"; }
@@ -522,7 +541,7 @@ $("pick-go").addEventListener("click", () => {
   const exOf = o => { if (!ana || !o) return ""; for (let k = o.idx + 1; k < ana.all.length && k <= o.idx + 3; k++) { const z = ana.all[k]; if (z.sec !== o.sec) break; if (z.role === "ex") return z.text; if (z.ess) break; } return ""; };
   let added = 0; chosen.forEach(x => { if (have.has(x.text)) return; const nn = makeNotion(x.text, "imp", src, ana && ana.kwl, x.o && x.o.role); nn.chap = ((x.o && ana && ana.secs[x.o.sec]) ? ana.secs[x.o.sec].title : "") || anaChap;
     const e = exOf(x.o); if (e) nn.ex = e; db.notions.push(nn); have.add(x.text); added++; });
-  fixExamples(db.notions); saveCours($("imp-mat").value.trim() || "Cours importé", $("imp-text").value.trim()); save(); useTool("notions"); renderList(); renderToday(); $("pick-card").hidden = true; $("imp-text").value = ""; impOpen = false; anaChap = ""; tab("jour");
+  fixExamples(db.notions); saveCours($("imp-mat").value.trim() || "Cours importé", sansReperes($("imp-text").value.trim())); save(); useTool("notions"); renderList(); renderToday(); $("pick-card").hidden = true; $("imp-text").value = ""; impPhoto = false; impOpen = false; anaChap = ""; tab("jour");
   note(`${added} notion${added > 1 ? "s" : ""} ajoutée${added > 1 ? "s" : ""}. Elles sont dans ta révision du jour.`, "ok");
 });
 
@@ -1319,11 +1338,50 @@ $("top-date").textContent = new Date().toLocaleDateString("fr-FR", {weekday: "lo
    carnet de mots, familles de mots. Puis les réglages d'affichage.
    ===================================================================== */
 function ACCENT() { return "#5B3E8C"; }
-db.cours = db.cours || []; db.mots = db.mots || [];
+db.cours = db.cours || []; db.mots = db.mots || []; db.moteur = db.moteur || {};
 /* Le texte d'un cours importé est gardé, pour pouvoir le relire et l'écouter. */
 function saveCours(mat, text) {
   if (!text || db.cours.some(c => c.text === text)) return;
-  db.cours.push({id: uid(), mat, text, created: Date.now(), marks: []});
+  const id = uid(); db.cours.push({id, mat, text, created: Date.now(), marks: []});
+  if (mot) { db.moteur = db.moteur || {}; db.moteur[id] = compacterMoteur(mot); }      // ce que le moteur a compris, pour la suite (révisions, quiz)
+}
+
+/* ---------- Moteur de compréhension (js/moteur/) : ce que Notéa a compris du cours ---------- */
+let mot = null;
+function lancerMoteur(text, mat) {
+  mot = null; $("mot-d").hidden = true;
+  if (typeof NoteaMoteur === "undefined") return;
+  try { mot = NoteaMoteur.analyserCours([{nom: mat || "Cours", type: impPhoto ? "photo" : "texte", texte: text}], {matiere: mat || undefined}); renderMoteur(); }
+  catch (e) { console.error("moteur", e); mot = null; }
+}
+function compacterMoteur(a) {
+  const g = a.graphe;
+  return {v: a.version, date: a.date, matiere: a.classification.matiere.valeur, chapitre: a.classification.chapitre.valeur, ordre: a.ordre.ordre, carte: a.schemas.carteMentale.plan,
+    noeuds: g.noeuds.map(n => ({id: n.id, cle: n.cle, nom: n.nom, importance: n.importance, difficulte: n.difficulte, definition: n.definition, prerequis: n.prerequis, page: n.pages[0], statut: n.statut})),
+    aretes: g.aretes.map(r => ({de: r.de, vers: r.vers, type: r.type, statut: r.statut, effet: r.effet, page: r.page, preuve: String(r.preuve || "").slice(0, 200)})),
+    questions: a.questions.slice(0, 40)};
+}
+function renderMoteur() {
+  const a = mot, box = $("mot"), g = a.graphe, nom = id => g.byId.get(id).nom, M = NoteaMoteur;
+  const p = (t, cls) => el("p", cls, t), h = t => el("h3", "mot-h", t);
+  const cl = a.classification, m = cl.matiere;
+  const lignes = [p("Matière : " + (m.valeur || "je ne sais pas") + (m.statut === "confirme" ? " (tu l'as écrite)" : m.statut === "infere" ? " (devinée d'après : " + (m.pourquoi || "").replace(/^mots typiques : /, "") + ")" : " (pas assez d'indices)"), "muted")];
+  if (cl.chapitre.valeur) lignes.push(p("Chapitre : " + cl.chapitre.valeur, "muted"));
+  if (cl.niveau.valeur) lignes.push(p("Niveau : " + cl.niveau.valeur + " (" + cl.niveau.pourquoi + ")", "muted"));
+  a.alertes.slice(0, 3).forEach(x => lignes.push(p(x.message, "msg warn")));
+  // Notions clés : importance et difficulté sont deux notes différentes.
+  const top = [...g.noeuds].sort((x, y) => y.importance - x.importance).slice(0, 6);
+  const liste = el("ol", "mot-list"); top.forEach(n => { const li = el("li"), b = el("b", null, n.nom), s = el("span", "muted", ` · importance ${n.importance}/100 · difficulté ${n.difficulte}/100`);
+    li.append(b, s, el("div", "mot-why", "Pourquoi : " + n.pertinence.pourquoi + (n.difficulte >= 30 ? ". Difficile : " + n.difficulteDetail.pourquoi : ""))); liste.append(li); });
+  const ordre = el("ol", "mot-list"); a.ordre.ordre.map(id => g.byId.get(id)).filter(n => n.importance >= 15).slice(0, 10).forEach(n => ordre.append(el("li", null, n.nom + (n.prerequis.length ? " (après : " + n.prerequis.map(nom).join(", ") + ")" : ""))));
+  const liens = el("ul", "mot-list"); g.aretes.filter(r => r.statut === M.STATUT.CONFIRME && r.type !== "associe").slice(0, 10).forEach(r => liens.append(el("li", null,
+    `« ${nom(r.de)} » ${r.effet ? (r.type === "provoque" ? "entraîne une " + r.effet + " de" : M.NOMS_REL[r.type]) : M.NOMS_REL[r.type]} « ${nom(r.vers)} »` + (r.page ? " (page " + r.page + ")" : ""))));
+  const bCarte = el("button", null, "Voir en carte mentale");
+  bCarte.addEventListener("click", () => { tab("carte"); $("cm-text").value = a.schemas.carteMentale.plan; drawMap(); note("Voilà la carte que Notéa a construite. Réécris-la avec tes mots : c'est ça qui fait retenir.", "ok"); });
+  box.replaceChildren(...lignes, h("Les notions les plus importantes"), liste, h("Dans quel ordre les apprendre"), ordre, ...(liens.children.length ? [h("Les liens écrits dans le cours"), liens] : []), el("div", "row", null));
+  box.lastChild.append(bCarte);
+  $("mot-n").textContent = ` · ${a.resume.notions} notions, ${a.resume.relationsConfirmees} liens, ${a.resume.questions} questions prêtes`;
+  $("mot-d").hidden = false;
 }
 
 /* ---------- Lire et écouter ----------
@@ -1399,6 +1457,7 @@ $("lec-mot").addEventListener("click", () => {
 });
 $("lec-del").addEventListener("click", () => {
   if (!lec.c || !confirm("Enlever ce cours de la lecture ? Tes notions restent dans ta révision.")) return;
+  if (db.moteur && lec.c) delete db.moteur[lec.c.id];        // l'analyse du cours part avec lui
   db.cours = db.cours.filter(c => c !== lec.c); save(); renderLecture();
 });
 $("lec-imp").addEventListener("click", () => { impOpen = true; tab("notions"); $("imp-card").scrollIntoView({block: "start"}); });
@@ -1506,7 +1565,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.3";
+const VERSION = "1.4";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {

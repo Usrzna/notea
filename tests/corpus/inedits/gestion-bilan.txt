@@ -1,0 +1,10 @@
+Le bilan comptable
+Le bilan est un document qui présente le patrimoine d'une entreprise à une date donnée.
+Le bilan comprend deux parties : l'actif et le passif.
+L'actif regroupe ce que l'entreprise possède.
+Le passif regroupe les ressources de l'entreprise, c'est-à-dire ses capitaux propres et ses dettes.
+Les capitaux propres sont les ressources apportées par les associés ou laissées par l'entreprise.
+Le total de l'actif est toujours égal au total du passif.
+Le résultat dépend des produits et des charges de l'exercice.
+Résultat = Produits − Charges
+Une hausse des charges entraîne une baisse du résultat.

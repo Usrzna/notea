@@ -454,7 +454,7 @@ button.primary .ic,label.btn .ic,button .ic{width:20px;height:20px}
 #tab-notes>.filters{order:-3}#tab-notes>#nmat{order:-2}#tab-notes>#notes-card{order:-1}
 @media (max-width:900px){#xp-n{display:none}.top>.row{flex-wrap:nowrap}}
 
-/* =====================================================================
+/* ==============================================================
    Version 1.3 : la carte qui se retourne, la création à la main, les cartes.
    ===================================================================== */
 .flip{display:grid;perspective:1800px}
@@ -493,3 +493,9 @@ button.primary .ic,label.btn .ic,button .ic{width:20px;height:20px}
 @media (hover:none){.kbd-hint{display:none}}
 @media (max-width:900px){.flip>.face{padding:var(--space-6);min-height:300px}.crow{grid-template-columns:1fr}.verdict{font-size:24px}.qtext.cardtxt{font-size:calc(var(--size) + 1px)}}
 #qc-why .muted{font-size:inherit}
+=======
+/* Moteur de compréhension : « Ce que Notéa a compris » */
+.mot-res{display:flex;flex-direction:column;gap:var(--space-2);margin-top:var(--space-2)}
+.mot-h{font-size:17px;margin-top:var(--space-3)}
+.mot-list{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px}
+.mot-why{font-size:14px;color:var(--text-2);line-height:1.4}
