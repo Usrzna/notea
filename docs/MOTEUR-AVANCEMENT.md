@@ -17,7 +17,8 @@ Mis à jour le 16 novembre 2026. À lire avant de reprendre le travail.
 
 ## Pas encore fait (prochaines étapes, dans l'ordre conseillé)
 
-1. **Brancher les questions et le profil élève dans les révisions** : la révision du jour, les quiz et le prof particulier utilisent encore l'ancien système (notions à trous + FSRS). Prochaine étape : proposer les questions du moteur (`db.moteur[id].questions`) et enregistrer chaque réponse avec `NoteaMoteur.enregistrer`, puis bâtir la séance avec `prochaineSeance`.
+1. ✅ **Fait en v1.5 (16 novembre)** : les questions du moteur sont dans le Quiz (QCM, situation, cause et effet, classer, vocabulaire, calcul ; dédoublonnées avec les questions de l'appli, 3 au plus du même genre), dans la révision du jour (jusqu'à 3 questions de compréhension par jour, corrigées par `evaluerReponse`, planifiées avec FSRS), dans l'examen blanc (questions ouvertes) et dans le prof particulier (notions clés, liens, ordre, points faibles). Chaque réponse est enregistrée dans `db.profil` avec `enregistrer`. Reste : utiliser `prochaineSeance` (il faut garder le graphe complet, pas seulement sa version compacte) et afficher les niveaux de maîtrise dans « Mes progrès ».
+1bis. (ancien texte) **Brancher les questions et le profil élève dans les révisions** : la révision du jour, les quiz et le prof particulier utilisent encore l'ancien système (notions à trous + FSRS). Prochaine étape : proposer les questions du moteur (`db.moteur[id].questions`) et enregistrer chaque réponse avec `NoteaMoteur.enregistrer`, puis bâtir la séance avec `prochaineSeance`.
 2. **Faire valider les annotations par des enseignants** (`tests/corpus/*/reference.json`) et ajouter de vrais cours d'élèves (anonymes) : c'est la seule façon de mesurer la pertinence pédagogique réelle.
 3. **Limites connues du découpage** :
    - les bornes des groupes nominaux (« globules » au lieu de « globules blancs », « production de lymphocytes mémoire ») ;

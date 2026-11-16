@@ -121,7 +121,7 @@ function todayQueue(now = Date.now()) {
     .slice(0, Math.max(0, newQuota(now) - db.newToday));
   const out = []; let t = 0;
   for (const n of due.concat(fresh)) { if ((t + secFor(n) > budget && out.length >= 3) || out.length >= DAY_MAX) break; out.push(n); t += secFor(n); }
-  return interleave(out);
+  return mixMQ(interleave(out), now);
 }
 function renderToday() {
   const q = todayQueue(), n = q.length; homeStats(q);
@@ -173,20 +173,20 @@ function showCard() {
   const n = queue[idx]; shown = false;
   $("pos").textContent = `${idx + 1} sur ${queue.length}`;
   $("prog").style.width = Math.round(idx / queue.length * 100) + "%";
-  $("q-src").replaceChildren(srcHTML(n)); $("q-text").replaceChildren(holeHTML(n, false));
+  if (n.enonce) mqShow(n); else { $("q-src").replaceChildren(srcHTML(n)); $("q-text").replaceChildren(holeHTML(n, false)); }
   $("voir").hidden = false; $("noter").hidden = true; $("voir").focus(); cardExtras(n);
 }
 function reveal() {
   if (shown) return; shown = true; const n = queue[idx], now = Date.now();
-  $("q-text").replaceChildren(holeHTML(n, true));
+  if (n.enonce) mqReveal(n); else $("q-text").replaceChildren(holeHTML(n, true));
   $("g2-when").firstChild.textContent = when(preview(n, 2, now).due) + " ";
   $("g3-when").firstChild.textContent = when(preview(n, 3, now).due) + " ";
   $("voir").hidden = true; $("noter").hidden = false; revealExtras(n);
 }
 function grade(g) {
   if (!shown) return; const n = queue[idx]; takeSnap(n);
-  if (!n.last) db.newToday++;
-  schedule(n, g, Date.now()); stats[g]++; save();
+  if (!n.last) { if (n.enonce) (db.mqNew = db.mqNew || {day: today(), n: 0}).n++; else db.newToday++; }
+  schedule(n, g, Date.now()); if (n.enonce) { moteurNote(n, n._score != null ? n._score : g === 1 ? 0 : g === 2 ? 0.75 : 1); delete n._score; } stats[g]++; save();
   if (onceToday("n" + n.id)) gain(n.reps === 1 ? 3 : 2, "révision");
   if (g === 1 && queue.slice(idx + 1).filter(x => x === n).length === 0) queue.push(n);   // « Raté » : elle revient à la fin
   else done++;
@@ -1074,7 +1074,7 @@ function exStart() {
   if (ns.length < 4) { note("Il faut au moins 4 notions dans cette matière pour un examen.", "warn"); return; }
   const kinds = ["qcm", "trou", "ouv"];
   const qs = ns.slice(0, nb).map((n, i) => ({n, k: form === "mix" ? (keyWords(n).length >= 2 ? kinds[i % 3] : kinds[i % 2]) : (form === "ouv" && keyWords(n).length < 2 ? "trou" : form), a: null}));
-  ex = {qs, i: 0, end: dur ? Date.now() + dur * 1000 : 0};
+  ex = {qs: mqExam(qs, m, form, nb), i: 0, end: dur ? Date.now() + dur * 1000 : 0};
   $("ex-conf").hidden = true; $("ex-res").hidden = true; $("ex-run").hidden = false; exShow();
   clearInterval(exTimer); exTimer = setInterval(exTick, 1000); exTick();
 }
@@ -1085,6 +1085,7 @@ function exTick() {
 }
 function exShow() {
   const q = ex.qs[ex.i], n = q.n; $("ex-pos").textContent = `Question ${ex.i + 1} sur ${ex.qs.length}`;
+  if (q.k === "mq") { $("ex-kind").textContent = "Explique avec tes mots."; $("ex-c").hidden = true; $("ex-in").hidden = true; $("ex-ta").hidden = false; $("ex-q").textContent = q.mq.enonce; $("ex-ta").value = ""; $("ex-next").textContent = ex.i + 1 < ex.qs.length ? "Valider et continuer" : "Rendre ma copie"; $("ex-ta").focus(); return; }
   $("ex-kind").textContent = q.k === "qcm" ? "Choisis la bonne réponse." : q.k === "trou" ? "Écris le mot qui manque." : "Explique avec tes mots.";
   $("ex-c").hidden = q.k !== "qcm"; $("ex-in").hidden = q.k !== "trou"; $("ex-ta").hidden = q.k !== "ouv";
   if (q.k === "qcm" && q.g === undefined) { q.g = null; for (const ty of shuffle(qPlan(n).filter(t => t !== "affirm" || !factOf(n)))) { const z = makeQ(n, ty, 3); if (z) { q.g = z; break; } } }
@@ -1097,8 +1098,9 @@ function exShow() {
   $("ex-next").textContent = ex.i + 1 < ex.qs.length ? "Valider et continuer" : "Rendre ma copie";
   (q.k === "trou" ? $("ex-in") : q.k === "ouv" ? $("ex-ta") : $("ex-next")).focus();
 }
-function exSave() { const q = ex.qs[ex.i]; if (q.k === "trou") q.a = $("ex-in").value.trim(); if (q.k === "ouv") q.a = $("ex-ta").value.trim(); }
+function exSave() { const q = ex.qs[ex.i]; if (q.k === "trou") q.a = $("ex-in").value.trim(); if (q.k === "ouv" || q.k === "mq") q.a = $("ex-ta").value.trim(); }
 function exCorrect(q) {
+  if (q.k === "mq") { if (!q.a) { moteurNote(q.mq, 0, "vide"); return false; } const r = NoteaMoteur.evaluerReponse(q.mq, q.a); moteurNote(q.mq, r.score, r.erreur); return r.correct; }
   if (!q.a) return false; const n = q.n;
   if (q.k === "qcm") return q.a === (q.g ? q.g.good : answerOf(n));
   if (q.k === "trou") return found(new Set(wordsOf(q.a)), answerOf(n));
@@ -1111,8 +1113,8 @@ function exFinish(why) {
   $("ex-sub").textContent = (why ? why + " " : "") + `${ok} bonne${ok > 1 ? "s" : ""} réponse${ok > 1 ? "s" : ""} sur ${res.length}. Les erreurs reviennent dans ta révision du jour.`;
   const box = $("ex-list"); box.replaceChildren();
   res.forEach(([q, good]) => { const r = document.createElement("div"); r.className = "res " + (good ? "ok" : "no");
-    r.append(good ? "✓ " : "✗ ", holeHTML(q.n, true)); if (!good && q.a) { const y = document.createElement("div"); y.className = "muted"; y.textContent = "Ta réponse : " + q.a; r.append(y); } box.append(r);
-    if (!good) { q.n.due = Date.now(); if (q.n.last) q.n.D = clampD(q.n.D + 0.5); } });
+    r.append(good ? "✓ " : "✗ "); if (q.mq) r.append(q.mq.enonce + " → " + q.mq.reponseAttendue); else r.append(holeHTML(q.n, true)); if (!good && q.a) { const y = document.createElement("div"); y.className = "muted"; y.textContent = "Ta réponse : " + q.a; r.append(y); } box.append(r);
+    if (!good && q.n) { q.n.due = Date.now(); if (q.n.last) q.n.D = clampD(q.n.D + 0.5); } });
   save(); renderToday(); if (onceToday("examen")) gainN(10 + ok, "examen blanc"); ex = null;
 }
 $("ex-go").addEventListener("click", exStart);
@@ -1120,7 +1122,7 @@ $("ex-again").addEventListener("click", () => { $("ex-res").hidden = true; $("ex
 $("ex-next").addEventListener("click", () => { exSave(); if (ex.i + 1 < ex.qs.length) { ex.i++; exShow(); } else exFinish(""); });
 $("ex-stop").addEventListener("click", () => { exSave(); exFinish("Examen arrêté."); });
 $("ex-in").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("ex-next").click(); } });
-$("ex-lire").addEventListener("click", () => { const q = ex && ex.qs[ex.i]; if (q) speak(q.k === "ouv" ? $("ex-q").textContent : sayNotion(q.n, false)); });
+$("ex-lire").addEventListener("click", () => { const q = ex && ex.qs[ex.i]; if (q) speak(q.k === "ouv" || q.k === "mq" ? $("ex-q").textContent : sayNotion(q.n, false)); });
 
 /* ---------- Visite personnalisée : les outils que l'élève utilise le plus passent en premier ---------- */
 db.use = db.use || {};
@@ -1197,7 +1199,7 @@ function dcStart() {
   const m = $("dc-mat").value, ns = db.notions.filter(n => !m || matOf(n) === m).slice(0, 25);
   if (!ns.length) { note("Ajoute d'abord un cours dans « Mes cours ».", "warn"); return; }
   dc.turns = []; dc.notions = ns; $("dc-thread").replaceChildren(); $("dc-chat").hidden = false; $("dc-hard").hidden = true;
-  dc.sys = DC_BASE + " " + DC_MODES[dc.mode][1] + "\n\nLes notions du cours" + (m ? " de " + m : "") + " :\n" + ns.map(n => "- " + n.text).join("\n");
+  dc.sys = DC_BASE + " " + DC_MODES[dc.mode][1] + "\n\nLes notions du cours" + (m ? " de " + m : "") + " :\n" + ns.map(n => "- " + n.text).join("\n") + moteurContexte(m);
   const first = dc.mode === "enf" ? "Bonjour ! Je suis prêt à t'expliquer mon cours." : dc.mode === "qst" ? "Pose-moi la première question." : "Explique-moi la première notion.";
   dc.turns.push({role: "user", content: first}); bubble2("user", first); dcAsk(); useTool("discu");
 }
@@ -1224,7 +1226,7 @@ dcHelp();
 
 /* ---------- Imprimer ---------- */
 document.querySelectorAll("[data-print]").forEach(b => b.addEventListener("click", () => {
-  const list = b.dataset.print === "jour" ? todayQueue() : db.notions;
+  const list = b.dataset.print === "jour" ? todayQueue().filter(n => n.text) : db.notions;
   if (!list.length) { note("Il n'y a rien à imprimer pour l'instant.", "warn"); return; }
   const sh = $("sheet"); sh.replaceChildren();
   const h = document.createElement("h2"); h.textContent = "Notéa · Texte à trous · " + new Date().toLocaleDateString("fr-FR");
@@ -1470,7 +1472,7 @@ function dcExplain(text, mat) {
   const ns = db.notions.filter(n => matOf(n) === mat).slice(0, 25);
   dc.turns = []; dc.notions = ns; $("dc-thread").replaceChildren(); $("dc-chat").hidden = false; $("dc-hard").hidden = true;
   dc.sys = DC_BASE + " L'élève ne comprend pas une phrase de son cours. Explique-la en 3 ou 4 phrases courtes, avec des mots simples et un exemple de la vie de tous les jours. Explique chaque mot difficile. Puis pose une seule question simple pour vérifier qu'il a compris."
-    + (ns.length ? "\n\nLes notions du cours de " + mat + " :\n" + ns.map(n => "- " + n.text).join("\n") : "");
+    + (ns.length ? "\n\nLes notions du cours de " + mat + " :\n" + ns.map(n => "- " + n.text).join("\n") : "") + moteurContexte(mat);
   const first = "Je ne comprends pas cette phrase : « " + text + " »";
   dc.turns.push({role: "user", content: first}); bubble2("user", first); dcAsk(); useTool("discu");
 }
@@ -1565,7 +1567,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.4";
+const VERSION = "1.5";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -1590,13 +1592,14 @@ function setRecall(v) { db.recall = v; save(); document.querySelectorAll("#rappe
 document.querySelectorAll("#rappel button").forEach(b => b.addEventListener("click", () => setRecall(b.dataset.r)));
 setRecall(db.recall);
 function cardExtras(n) {
-  const ec = db.recall === "ecrit" && n.holes.length > 0;
+  const ec = !!n.enonce || (db.recall === "ecrit" && n.holes.length > 0); if (!n.enonce) $("q-in").placeholder = "Écris ou dicte le mot caché, puis Entrée";
   $("q-type").hidden = !ec; $("q-in").value = ""; $("q-fb").hidden = true;
   $("leech").hidden = !((n.lapses || 0) >= 4);
   if (ec) $("q-in").focus();
 }
 function revealExtras(n) {
   const v = $("q-in").value.trim(); $("q-type").hidden = true;
+  if (n.enonce) { mqFeedback(n, v); return; }
   if (db.recall !== "ecrit" || !v) return;
   const ok = found(new Set(wordsOf(v)), answerOf(n)), fb = $("q-fb");
   fb.className = "msg " + (ok ? "ok" : "warn"); fb.hidden = false;
@@ -1898,6 +1901,7 @@ function fixElision(s) { return s.replace(/\b([lLdD])['’](?=[bcdfgjklmnpqrstvw
    exo    : les exercices écrits par l'élève
    carte  : les cartes de l'élève */
 function qPlan(x) {
+  if (x.mq) return ["moteur"];
   if (x.q !== undefined && x.a !== undefined) return ["exo"]; if (x.front !== undefined) return ["carte"];
   const t = [], f = factOf(x);
   if (f) t.push("def", "term", "pairs"); if (x.ex) t.push("ex"); if (yearOf(x)) t.push("date"); if (!f && x.holes && x.holes.length && answerOf(x)) t.push("affirm");
@@ -1905,6 +1909,7 @@ function qPlan(x) {
 }
 var PREF = {1: ["term", "def", "date", "exo", "carte", "ex", "affirm", "pairs"], 2: ["def", "ex", "term", "exo", "carte", "date", "pairs", "affirm"], 3: ["ex", "pairs", "affirm", "def", "exo", "carte", "term", "date"]};
 function makeQ(x, t, k) {
+  if (t === "moteur") return makeMQ(x, k);
   const q = {t, x, quote: "", tag: "", text: "", good: "", opts: []};
   if (t === "exo") {
     const user = (x.wrong || []).filter(Boolean).map(a => ({a, user: true}));
@@ -1949,19 +1954,22 @@ function makeQ(x, t, k) {
    d'abord celles jamais vues en quiz, puis celles ratées, puis les plus anciennes. Les formes de questions changent. */
 function cqBuild(items, nb) {
   const k = db.niv === 1 ? 2 : db.niv === 3 ? 4 : 3;
-  const pr = x => { const z = x.qz || {n: 0, ok: 0, last: 0}; return (z.n === 0 ? 0 : 2e13) + (z.n > z.ok ? 0 : 1e13) + z.last + Math.random() * 1e5; };
+  const pr = x => { const z = x.qz || {n: 0, ok: 0, last: 0}; return (z.n === 0 ? 0 : 2e13) + (z.n > z.ok ? 0 : 1e13) + z.last + Math.random() * 1e5 - (x.mq ? (x.mq.pertinence || 0) * 5e4 : 0); };
   const by = new Map(); items.slice().sort((a, b) => pr(a) - pr(b)).forEach(x => { const c = chapOf(x); if (!by.has(c)) by.set(c, []); by.get(c).push(x); });
   const cols = [...by.values()], order = []; for (let i = 0; order.length < items.length; i++) cols.forEach(c => { if (c[i]) order.push(c[i]); });
-  const out = [], cnt = {}; let last = "";
+  const out = [], cnt = {}, seenG = new Set(), famN = {}, later = [], cap = Math.max(2, Math.ceil(nb / 4)); let last = "";
   for (const x of order) { if (out.length >= nb) break;
     const sc = t => (cnt[t] || 0) * 2 + PREF[db.niv].indexOf(t) * 0.5 + (t === last ? 5 : 0) + Math.random() * 0.3;
-    for (const t of qPlan(x).sort((a, b) => sc(a) - sc(b))) { const q = makeQ(x, t, k); if (q) { out.push(q); cnt[t] = (cnt[t] || 0) + 1; last = t; break; } } }
+    for (const t of qPlan(x).sort((a, b) => sc(a) - sc(b))) { const q = makeQ(x, t, k); if (!q || seenG.has(famKey(q))) continue; const fk = famKey(q).split("|")[0];
+      if ((famN[fk] || 0) >= cap) { later.push(q); break; }   // pas plus de 3 questions du même genre : on varie
+      seenG.add(famKey(q)); famN[fk] = (famN[fk] || 0) + 1; out.push(q); cnt[t] = (cnt[t] || 0) + 1; last = t; break; } }
+  for (const q of later) { if (out.length >= nb) break; if (!seenG.has(famKey(q))) { seenG.add(famKey(q)); out.push(q); } }
   return out;
 }
 
 /* ---------- Le Quiz : une carte qui se retourne ---------- */
 var cq = null;
-function cqItems(m, ch) { return [...db.notions.filter(n => !n.off), ...db.exos, ...db.cards.filter(c => !c.nid && !c.eid)].filter(x => (!m || matOf(x) === m) && (!ch || chapOf(x) === ch)); }
+function cqItems(m, ch) { return moteurItems(m, ch).concat([...db.notions.filter(n => !n.off), ...db.exos, ...db.cards.filter(c => !c.nid && !c.eid)].filter(x => (!m || matOf(x) === m) && (!ch || chapOf(x) === ch))); }
 function cqStart(items) {
   const list = cqBuild(items || cqItems($("jx-mat").value, $("jx-chap").value), 10);
   if (!list.length) { note("Pas assez de matière pour un quiz. Ajoute des notions avec leur définition, des exercices ou des cartes (« Mes cours » → « Créer à la main »).", "warn"); return; }
@@ -1988,7 +1996,7 @@ function cqAnswer(i) {
   if (cq.answered) return; cq.answered = true; const q = cq.list[cq.i], c = q.choices[i], good = !!c.good, x = q.x, now = Date.now();
   [...$("qc-c").children].forEach((b, j) => { b.disabled = true; if (q.choices[j].good) b.classList.add("ok"); else if (j === i) b.classList.add("no"); });
   if (good) cq.ok++; else if (!cq.miss.includes(x)) cq.miss.push(x);
-  x.qz = x.qz || {n: 0, ok: 0, last: 0}; x.qz.n++; if (good) x.qz.ok++; x.qz.last = now;
+  x.qz = x.qz || {n: 0, ok: 0, last: 0}; x.qz.n++; if (good) x.qz.ok++; x.qz.last = now; if (x.mq) moteurNote(x.mq, good ? 1 : 0, !good && (c.why || c.node) ? "confusion" : null);
   if (x.text && x.holes && (!x.last || x.due <= now)) { if (!x.last) db.newToday++; schedule(x, good ? "h" : 1, now); }
   save(); if (onceToday("cq" + (x.id || q.text))) gainN(1, "quiz");
   cqBack(q, c, good); $("qc-turn").hidden = false;
@@ -2000,7 +2008,8 @@ function cqBack(q, c, good) {
   const line = (lab, txt, cls) => { const d = el("div", "ansline " + cls); d.append(el("small", "", lab), el("b", "", txt)); return d; };
   const box = $("qc-ans"); box.replaceChildren(); if (!good) box.append(line("Ta réponse", c.a, "mine")); box.append(line("La bonne réponse", q.good, "good"));
   const w = $("qc-why"); w.replaceChildren(el("b", "", "Pourquoi ?")); const p = t => w.append(el("div", "", t));
-  if (x.text) {
+  if (x.mq) moteurPourquoi(x, c, good, p);
+  else if (x.text) {
     const f = factOf(x);
     if (x.why) p(x.why);
     if (q.t === "ex") p(`Cet exemple montre « ${q.good} »` + (f ? ` : ${f.def}.` : "."));
@@ -2019,7 +2028,7 @@ function cqEnd() {
   $("qc").hidden = true; $("jx-end").hidden = false; const n = cq.list.length;
   $("jx-end-t").textContent = `${cq.ok} sur ${n}`;
   $("jx-end-s").textContent = cq.ok === n ? "Parfait ! Tout est juste." : "Les notions ratées reviennent plus tôt dans ta révision. Tu peux aussi les revoir tout de suite.";
-  const l = $("jx-end-l"); l.replaceChildren(); cq.miss.forEach(x => { const r = el("div", "res no"); if (x.holes) r.append("✗ ", holeHTML(x, true)); else r.append("✗ " + (x.q || x.front) + " → " + (x.a || x.back)); l.append(r); });
+  const l = $("jx-end-l"); l.replaceChildren(); cq.miss.forEach(x => { const r = el("div", "res no"); if (x.holes) r.append("✗ ", holeHTML(x, true)); else r.append("✗ " + (x.q || x.front || (x.mq && x.mq.enonce)) + " → " + (x.a || x.back || (x.mq && x.mq.reponseAttendue))); l.append(r); });
   $("jx-miss").hidden = !cq.miss.length; $("jx-miss").textContent = `Revoir mes erreurs (${cq.miss.length})`;
   if (onceToday("jeu-quiz")) gainN(5, "quiz"); renderToday();
 }
@@ -2222,6 +2231,144 @@ document.addEventListener("keydown", e => {
 fixExamples(db.notions); save();
 Object.assign(SUBS, {jeux: "Choisis ta réponse : la carte se retourne et t'explique la correction.", trous: "Retrouve le mot caché de ton cours.",
   cartes: "Tes cartes recto verso. Écris-les, puis révise-les.", notions: "Importe ton cours, ou écris-le toi-même."});
+
+
+/* =====================================================================
+   Version 1.5 : les questions du moteur de compréhension sont utilisées partout.
+   Quiz : les QCM du moteur et ses questions dont la réponse est une notion (situation, cause, catégorie…).
+   Révision du jour : jusqu'à 3 questions de compréhension, à expliquer avec ses mots, corrigées sans IA.
+   Examen blanc : les questions ouvertes du moteur. Prof particulier : les liens et l'ordre du cours, et ce que l'élève maîtrise mal.
+   Chaque réponse est enregistrée dans le profil de l'élève (niveaux de maîtrise du moteur).
+   ===================================================================== */
+var MQ_NOM = ["directe", "situation", "categorie", "lieu", "condition", "calcule-quoi", "causalite"];
+var MQ_REV = ["reformulation", "situation", "causalite", "comparaison", "condition", "dependance", "partie", "categorie", "lieu", "calcule-quoi", "calcul", "synthese"];
+var MQ_TAG = {qcm: "Définition", "qcm-notion": "Définition", directe: "Vocabulaire", situation: "Situation", categorie: "Classer", lieu: "Où ?", condition: "Condition",
+  "calcule-quoi": "Formule", causalite: "Cause et effet", calcul: "Calcul", reformulation: "Avec tes mots", comparaison: "Comparer", dependance: "Dépend de",
+  partie: "Les éléments", synthese: "Relier les idées", definition: "Définition", chronologie: "Ordre"};
+function moteurOK() { return typeof NoteaMoteur !== "undefined"; }
+function profil() { if (!db.profil && moteurOK()) db.profil = NoteaMoteur.nouveauProfil(); return db.profil; }
+function moteurNote(mq, score, err) {
+  const p = profil(); if (!p || !mq.notions || !mq.notions.length) return;
+  try { NoteaMoteur.enregistrer(p, {notion: mq.notions[0], activite: mq.type, score, erreur: err || undefined}); } catch (e) {}
+}
+/* Les questions du moteur, avec la matière et le chapitre de leur cours. */
+function moteurBanque(m, ch) {
+  const out = []; (db.cours || []).forEach(c => { const a = db.moteur && db.moteur[c.id]; if (!a || !a.questions) return;
+    const mat = c.mat || a.matiere || "Cours", chap = c.chap || a.chapitre || "";
+    if ((m && mat !== m) || (ch && chap !== ch)) return;
+    a.questions.forEach(q => { q.mat = mat; q.chap = chap; q.cid = c.id; out.push(q); }); });
+  return out;
+}
+function moteurNoeud(cid, id) { const a = db.moteur && db.moteur[cid]; return a && a.noeuds ? a.noeuds.find(n => n.id === id) : null; }
+function numVariants(v) { const s = new Set([v]), out = []; [v * 2, v / 2, v + 1, v - 1, v * 10, v + 10, v / 10].forEach(x => { x = Math.round(x * 1000) / 1000; if (x > 0 && !s.has(x)) { s.add(x); out.push(String(x).replace(".", ",")); } }); return out; }
+
+/* ---------- Quiz : une question du moteur devient une carte à retourner ---------- */
+function mqQuizable(q) { return (q.choix && q.choix.length >= 3) || MQ_NOM.includes(q.type) || (q.type === "calcul" && q.numerique != null); }
+function moteurItems(m, ch) { return moteurBanque(m, ch).filter(mqQuizable).map(q => ({mq: q, id: q.id, mat: q.mat, chap: q.chap, kind: "def", qz: q.qz || (q.qz = {n: 0, ok: 0, last: 0})})); }
+function makeMQ(x, k) {
+  const mq = x.mq, nodes = (db.moteur[mq.cid] || {}).noeuds || [], q = {t: "moteur", x, quote: "", tag: MQ_TAG[mq.type] || "Compréhension", text: mq.enonce, good: elide(String(mq.reponseAttendue)), opts: []};
+  if (mq.choix && mq.choix.length >= 3) {
+    q.opts = mq.choix.filter(c => nk(c) !== nk(q.good)).map(c => { const pg = (mq.pieges || []).find(p => nk(p.texte) === nk(c));
+      return {a: c, why: pg ? pg.pourquoi : "", node: pg ? moteurNoeud(mq.cid, pg.notion) : null}; });
+    if (db.niv === 1) q.opts = q.opts.slice(0, 2);
+  } else if (mq.type === "calcul") {
+    if (mq.indice) q.quote = mq.indice; q.good = String(mq.numerique).replace(".", ",");
+    q.opts = numVariants(mq.numerique).slice(0, k).map(a => ({a}));
+  } else {
+    const pre = (q.good.match(/^(une (?:hausse|baisse) de )/i) || ["", ""])[1], core = q.good.slice(pre.length);
+    const inQ = new Set(mq.notions.slice(1).map(id => { const n = moteurNoeud(mq.cid, id); return n ? nk(n.nom) : ""; }));
+    const cands = nodes.filter(n => nk(n.nom) !== nk(core) && !inQ.has(nk(n.nom)) && n.statut !== "incertain").map(n => ({a: elide(pre + n.nom), node: n, mat: mq.mat, chap: mq.chap, kind: "def"}));
+    q.opts = (pre ? [{a: elide((/hausse/i.test(pre) ? "une baisse de " : "une hausse de ") + core), why: "c'est l'effet inverse de ce que dit le cours"}] : [])
+      .concat(pickD(x, q.good, cands, k, mq.enonce)).slice(0, k);
+  }
+  q.opts = dedupeOpts(q.good, q.opts);
+  return q.opts.length >= 2 ? q : null;
+}
+function famKey(q) {
+  const t = q.t === "moteur" ? q.x.mq.type : q.t;
+  const f = {def: "D", qcm: "D", term: "T", directe: "T", "qcm-notion": "T", ex: "E", situation: "E"}[t] || t;
+  return f + "|" + nk(q.good);
+}
+function elide(s) { return s.replace(/(^|\s)(de|le|la) (?=[aeiouyhâàéèêîôûAEIOUYH])/g, (m, s0, a) => s0 + (a === "de" ? "d'" : "l'")); }
+/* Une définition du moteur est parfois la phrase entière du cours : on la cite telle quelle. */
+function defPhrase(n) { const d = String(n.definition).trim().replace(/\.+$/, ""); return nk(d).includes(nk(n.nom)) ? `Le cours dit : « ${d}. »` : `« ${n.nom} », c'est ${d}.`; }
+function moteurPourquoi(x, c, good, p) {
+  const mq = x.mq;
+  if (!good && c.why) p("Ce que tu as choisi : " + c.why + ".");
+  else if (!good && c.node && c.node.definition) p(`Ce que tu as choisi, « ${c.node.nom} », c'est autre chose. ` + defPhrase(c.node));
+  const src = (mq.corrige || (mq.source && mq.source.texte) || "").trim();
+  if (src) p("Dans ton cours" + (mq.source && mq.source.page ? " (page " + mq.source.page + ")" : "") + " : « " + src + " »");
+  const n = moteurNoeud(mq.cid, mq.notions[0]); if (n && n.definition && !nk(src).includes(nk(n.definition))) p(defPhrase(n));
+}
+
+/* ---------- Révision du jour : des questions de compréhension, en plus des notions ---------- */
+function mqPrep(q) { if (q.D == null) { q.D = clampD(2 + (q.difficulte || 30) / 12); q.S = 0; q.last = 0; q.due = 0; q.reps = 0; q.lapses = 0; q.mark = "moteur"; } return q; }
+function mqRevision(now) {
+  if (!MQ_REV || !moteurOK() || onVacation()) return [];   // au tout début du chargement, ces listes ne sont pas encore prêtes
+  db.mqNew = db.mqNew && db.mqNew.day === today() ? db.mqNew : {day: today(), n: 0};
+  const end = new Date(); end.setHours(23, 59, 59, 999);
+  const bank = moteurBanque("", "").filter(q => MQ_REV.includes(q.type));
+  const due = bank.filter(q => q.last && q.due <= end.getTime()).sort((a, b) => a.due - b.due);
+  const fresh = Math.max(0, 2 - db.mqNew.n) ? NoteaMoteur.choisirQuestions(bank.filter(q => !q.last), profil(), 2 - db.mqNew.n, now) : [];
+  return due.concat(fresh).slice(0, 3).map(mqPrep);
+}
+function mixMQ(list, now) {
+  const mq = mqRevision(now); if (!mq.length) return list;
+  const out = list.slice(), step = Math.max(2, Math.floor(out.length / (mq.length + 1)));
+  mq.forEach((q, i) => out.splice(Math.min(out.length, (i + 1) * step + i), 0, q));
+  return out;
+}
+function mqShow(n) {
+  const s = document.createDocumentFragment(), c = el("span", "chip q", MQ_TAG[n.type] || "Compréhension"); s.append(c, document.createTextNode([n.niveau, n.mat, n.chap].filter(Boolean).join(" · ")));
+  $("q-src").replaceChildren(s); $("q-text").replaceChildren(document.createTextNode(n.enonce)); if (n.indice) $("q-text").append(el("div", "muted", n.indice));
+  $("q-in").placeholder = "Réponds avec tes mots (tu peux aussi répondre dans ta tête)";
+}
+function mqReveal(n) {
+  const box = $("q-text"); box.replaceChildren(document.createTextNode(n.enonce));
+  const r = el("div", "ansline good"); r.append(el("small", "", "Réponse du cours"), el("b", "", String(n.reponseAttendue))); box.append(r);
+  const src = (n.corrige || (n.source && n.source.texte) || "").trim(); if (src) box.append(el("div", "muted", "Dans ton cours" + (n.source && n.source.page ? " (page " + n.source.page + ")" : "") + " : « " + src + " »"));
+}
+function motsEntiers(n, stems) {
+  const ws = String(n.reponseAttendue || "").split(/\s+/).map(w => w.replace(/^[^\p{L}\d]+|[^\p{L}\d]+$/gu, ""));
+  return [...new Set(stems.map(s => ws.find(w => norm(w).startsWith(norm(s))) || s))];
+}
+function mqFeedback(n, v) {
+  n._score = null; if (!v) return; const r = NoteaMoteur.evaluerReponse(n, v), fb = $("q-fb"); n._score = r.score; fb.hidden = false;
+  if (r.correct) { fb.className = "msg ok"; fb.textContent = "✓ Ta réponse contient l'essentiel." + (r.orthographeIgnoree ? " (Les fautes d'orthographe ne comptent pas.)" : ""); document.querySelector(".g3").focus(); }
+  else { fb.className = "msg warn"; fb.textContent = r.erreur === "confusion" && r.confondAvec ? "Attention, tu sembles confondre avec : « " + r.confondAvec + " »." : r.manquants && r.manquants.length ? "Il manque : " + motsEntiers(n, r.manquants).join(", ") + ". Compare avec la réponse du cours." : "Compare avec la réponse du cours.";
+    document.querySelector(r.score > 0 ? ".g2" : ".g1").focus(); }
+}
+
+/* ---------- Examen blanc : les questions ouvertes du moteur ---------- */
+function mqExam(qs, m, form, nb) {
+  if (!moteurOK() || (form !== "ouv" && form !== "mix")) return qs;
+  const bank = shuffle(moteurBanque(m, "").filter(q => MQ_REV.includes(q.type) && q.type !== "calcul"));
+  const want = form === "ouv" ? Math.ceil(nb / 2) : Math.ceil(nb / 3);
+  const nomDe = x => { const f = x.n && factOf(x.n); return nk(f ? f.term : x.n ? answerOf(x.n) : ""); }, pris = new Set();
+  bank.filter(q => { const nd = moteurNoeud(q.cid, q.notions[0]), k = nd ? nk(nd.nom) : q.id; if (pris.has(k)) return false; pris.add(k); return true; }).slice(0, want).forEach((q, i) => {
+    const item = {mq: q, k: "mq", a: null}, nd = moteurNoeud(q.cid, q.notions[0]);
+    let j = nd ? qs.findIndex(x => x.k !== "mq" && nomDe(x) === nk(nd.nom)) : -1;
+    if (j < 0 && qs.length >= nb) j = qs.findIndex((x, k) => k >= i * 2 && x.k !== "mq");
+    if (j >= 0) qs[j] = item; else qs.push(item); });
+  bank.filter(q => !qs.some(x => x.mq === q)).forEach(q => { if (qs.length < nb && !qs.some(x => x.mq && x.mq.type === q.type && x.mq.notions[0] === q.notions[0])) qs.push({mq: q, k: "mq", a: null}); });   // compléter avec d'autres questions du cours
+  return shuffle(qs).slice(0, nb);
+}
+
+/* ---------- Prof particulier : ce que Notéa a compris du cours, et ce que l'élève maîtrise mal ---------- */
+function moteurContexte(m) {
+  if (!moteurOK()) return ""; const p = profil(), lines = [], NR = NoteaMoteur.NOMS_REL || {};
+  (db.cours || []).forEach(c => { const a = db.moteur && db.moteur[c.id]; if (!a || !a.noeuds || (m && (c.mat || a.matiere) !== m)) return;
+    const byId = new Map(a.noeuds.map(n => [n.id, n]));
+    lines.push(`\n\nCe que Notéa a compris du cours « ${a.chapitre || c.mat} » :`);
+    a.noeuds.slice().sort((x, y) => (y.importance || 0) - (x.importance || 0)).slice(0, 8).forEach(n => lines.push(`- ${n.nom} (importance ${n.importance}/100)` + (n.definition ? " : " + n.definition : "")));
+    const liens = (a.aretes || []).filter(r => r.statut === "confirme" && r.type !== "associe" && byId.has(r.de) && byId.has(r.vers)).slice(0, 12);
+    if (liens.length) { lines.push("Liens écrits dans le cours :"); liens.forEach(r => lines.push(`- « ${byId.get(r.de).nom} » ${NR[r.type] || r.type} « ${byId.get(r.vers).nom} »`)); }
+    const ord = (a.ordre || []).map(id => byId.get(id)).filter(Boolean).map(n => n.nom); if (ord.length > 1) lines.push("Ordre conseillé pour apprendre : " + ord.slice(0, 10).join(" → "));
+    const faibles = p ? a.noeuds.filter(n => { const e = p.notions[n.id]; return e && e.preuves && e.preuves.length && NoteaMoteur.niveauMaitrise(e) < 3; }).map(n => n.nom) : [];
+    if (faibles.length) lines.push("L'élève maîtrise encore mal : " + faibles.slice(0, 6).join(", ") + ". Commence par ces notions, en respectant l'ordre conseillé.");
+  });
+  return lines.length ? lines.join("\n") + "\nAppuie-toi seulement sur ces informations et sur les notions données. N'invente rien." : "";
+}
 
 /* ---------- Le bouton « retour » du navigateur marche, et la page ouverte est gardée ---------- */
 window.addEventListener("popstate", () => tab(TABS[location.hash.slice(1)] ? location.hash.slice(1) : "jour", true));
