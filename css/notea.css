@@ -453,3 +453,43 @@ button.primary .ic,label.btn .ic,button .ic{width:20px;height:20px}
 }
 #tab-notes>.filters{order:-3}#tab-notes>#nmat{order:-2}#tab-notes>#notes-card{order:-1}
 @media (max-width:900px){#xp-n{display:none}.top>.row{flex-wrap:nowrap}}
+
+/* =====================================================================
+   Version 1.3 : la carte qui se retourne, la création à la main, les cartes.
+   ===================================================================== */
+.flip{display:grid;perspective:1800px}
+.flip>.face{grid-area:1/1;-webkit-backface-visibility:hidden;backface-visibility:hidden;transition:transform .55s var(--ease);background:var(--surface);border:1.5px solid var(--line);border-radius:var(--radius-xl);padding:var(--space-8);display:flex;flex-direction:column;gap:var(--space-4);min-height:360px;box-shadow:var(--shadow-1)}
+.flip>.back{transform:rotateY(180deg)}
+.flip.turned>.front{transform:rotateY(-180deg)}
+.flip.turned>.back{transform:rotateY(0deg)}
+.flip>.face[inert]{pointer-events:none}
+.flip>.back.ok{border-color:var(--success);background:linear-gradient(var(--success-soft),var(--surface) 150px)}
+.flip>.back.no{border-color:var(--danger);background:linear-gradient(var(--danger-soft),var(--surface) 150px)}
+.verdict{font-family:var(--font-title);font-size:28px;font-weight:700;margin:0}
+.back.ok .verdict{color:var(--success)} .back.no .verdict{color:var(--danger)}
+.quote{margin:0;border-left:4px solid var(--accent);background:var(--surface-2);border-radius:0 var(--radius-md) var(--radius-md) 0;padding:var(--space-3) var(--space-4);font-size:calc(var(--size) - 2px);line-height:var(--lh)}
+.choices.lettered button{gap:var(--space-3);font-weight:600;line-height:1.4;padding-block:var(--space-3)}
+.choices .lt{flex:none;width:30px;height:30px;border-radius:50%;background:var(--accent-soft);color:var(--accent-text);display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:15px}
+.choices button.ok::before,.choices button.no::before{display:none}
+.choices button.ok .lt{background:var(--success);color:#fff} .choices button.no .lt{background:var(--danger);color:#fff}
+.ansline{display:flex;flex-direction:column;gap:2px;padding:var(--space-3) var(--space-4);border-radius:var(--radius-md);background:var(--surface-2)}
+.ansline small{font-size:12px;color:var(--text-2);font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.ansline b{font-size:calc(var(--size) - 2px);line-height:1.45}
+.ansline.good{background:var(--success-soft)} .ansline.mine{background:var(--danger-soft)}
+.pre{white-space:pre-line}
+.qtext.cardtxt{font-size:calc(var(--size) + 4px);font-weight:700;text-align:center;margin:auto 0}
+.sect{border:1px solid var(--line);border-radius:var(--radius-lg);padding:0 var(--space-4);background:var(--surface)}
+.sect>summary{min-height:56px;display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;cursor:pointer;font-size:18px;list-style:none}
+.sect>summary::-webkit-details-marker{display:none}
+.sect>summary::after{content:"";width:9px;height:9px;border-right:2.5px solid var(--text-2);border-bottom:2.5px solid var(--text-2);transform:rotate(45deg);margin-left:auto}
+.sect[open]>summary::after{transform:rotate(-135deg)}
+.sect[open]{padding-bottom:var(--space-4)} .sect>*:not(summary){margin-top:var(--space-3)}
+.fld{display:flex;flex-direction:column;gap:6px} .fld>label{font-weight:700}
+.crow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:var(--space-3);align-items:start;padding:var(--space-3) 0;border-top:1px solid var(--line)}
+.crow:first-of-type{border-top:0} .crow p{margin:0}
+.toggle{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:700;color:var(--text-2);cursor:pointer;min-height:44px}
+.nrow.off .t{opacity:.5}
+#man-done:empty{display:none} #man-done:not(:empty){display:block}
+@media (hover:none){.kbd-hint{display:none}}
+@media (max-width:900px){.flip>.face{padding:var(--space-6);min-height:300px}.crow{grid-template-columns:1fr}.verdict{font-size:24px}.qtext.cardtxt{font-size:calc(var(--size) + 1px)}}
+#qc-why .muted{font-size:inherit}

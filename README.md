@@ -34,6 +34,10 @@ Tout reste sur l'appareil de l'élève (localStorage). Rien n'est envoyé.
 - **Agenda & planning** : envoyer son emploi du temps (photo ou fichier lu sur l'appareil), planning, progrès, impression.
 - **Mes cours** : un dossier par matière, import, lecture à voix haute.
 - **Mon carnet** : notions triées (à retravailler, peu compris, réussies), feuille blanche, carte mentale, quiz, examen, mots.
+- **Quiz** (version 1.3) : une carte qui se retourne. Au recto, la question et au moins 3 choix. Au verso : juste ou faux, la bonne réponse et l'explication. Formes de questions : définition, mot à retrouver, exemple à relier à sa notion, affirmations à démêler, dates, exercices et cartes de l'élève. Les mauvaises réponses viennent du même cours, du même chapitre et du même type de notion.
+- **Questions à trous** : un outil à part (Facile 3 choix, Moyen 4, Difficile à écrire).
+- **Mes cartes** : recto et verso écrits par l'élève, rangés par chapitre, révisés avec FSRS.
+- **Créer à la main** (Mes cours) : écrire son cours, ses notions (définition, concept, formule, date, à retenir, règle), ses exercices avec leurs pièges.
 - **Prof particulier** : l'IA pose les questions, avec « Un indice » et « Explique-moi ».
 - **Accessibilité** et **Paramètres**.
 

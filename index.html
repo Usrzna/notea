@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600..800&family=Nunito:wght@400..900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/notea.css?v=1.2">
+<link rel="stylesheet" href="css/notea.css?v=1.3">
 </head>
 <body>
 
@@ -136,9 +136,37 @@
 
   <!-- ===== Mes cours ===== -->
   <section id="tab-notions" class="stack" hidden>
-    <div class="row" style="justify-content:space-between"><p class="muted">Retrouve tous tes cours, rangés par matière.</p><button class="primary" id="imp-open"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Importer un cours</button></div>
+    <div class="row" style="justify-content:space-between"><p class="muted">Retrouve tous tes cours, rangés par matière.</p><span class="row"><button id="man-open"><svg class="ic" aria-hidden="true"><use href="#i-pencil"/></svg>Créer à la main</button><button class="primary" id="imp-open"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Importer un cours</button></span></div>
     <div class="folders" id="dossiers"></div>
     <p class="muted" id="dossiers-vide" hidden>Pas encore de cours. Importe ton premier cours juste en dessous.</p>
+    <div class="card" id="man-card" hidden>
+      <h2>Créer mon cours à la main</h2>
+      <p class="muted">Tu écris toi-même ce que ton prof a enseigné. C'est la base la plus fiable pour tes révisions.</p>
+      <div class="row"><label for="man-mat"><b>Matière</b></label><input type="text" id="man-mat" list="mat-list" placeholder="Par exemple : Droit civil" style="flex:1 1 200px">
+        <label for="man-chap"><b>Chapitre</b></label><input type="text" id="man-chap" list="chap-list" placeholder="Par exemple : 1 · La propriété" style="flex:1 1 200px"></div>
+      <details class="sect"><summary><b>1. Mon cours</b><span class="muted">facultatif</span></summary>
+        <textarea id="man-text" placeholder="Copie ou écris ton cours ici" style="min-height:160px"></textarea>
+        <div class="row"><button id="man-text-save">Enregistrer le cours</button><button id="man-text-ana">Trouver les notions dans ce texte</button></div>
+      </details>
+      <details class="sect" open><summary><b>2. Mes notions</b><span class="muted">définitions, concepts, formules, dates…</span></summary>
+        <span class="seg2" id="man-kind" role="group" aria-label="Type de notion"><button data-k="def" class="on">Définition</button><button data-k="concept">Concept</button><button data-k="form">Formule</button><button data-k="date">Date</button><button data-k="info">À retenir</button><button data-k="regle">Règle</button></span>
+        <div class="fld"><label for="man-term" id="man-term-l">Le mot</label><input type="text" id="man-term" autocomplete="off"></div>
+        <div class="fld"><label for="man-def" id="man-def-l">Sa définition</label><textarea id="man-def"></textarea></div>
+        <div class="fld"><label for="man-ex">Un exemple du cours <span class="muted">(facultatif, il servira aux questions de compréhension)</span></label><textarea id="man-ex"></textarea></div>
+        <div class="fld"><label for="man-why">Une explication <span class="muted">(facultatif, elle s'affiche dans la correction)</span></label><textarea id="man-why"></textarea></div>
+        <div class="row"><button class="primary" id="man-add">Ajouter la notion</button><label class="toggle"><input type="checkbox" id="man-card-too" checked> Créer aussi une carte</label></div>
+      </details>
+      <details class="sect"><summary><b>3. Mes exercices et mes questions</b><span class="muted">ils vont dans tes quiz</span></summary>
+        <div class="fld"><label for="exo-q">La question ou l'énoncé</label><textarea id="exo-q"></textarea></div>
+        <div class="fld"><label for="exo-a">La bonne réponse</label><input type="text" id="exo-a" autocomplete="off"></div>
+        <div class="fld"><label for="exo-w">Des mauvaises réponses <span class="muted">(facultatif, une par ligne : les pièges du quiz)</span></label><textarea id="exo-w"></textarea></div>
+        <div class="fld"><label for="exo-why">L'explication <span class="muted">(facultatif)</span></label><textarea id="exo-why"></textarea></div>
+        <div class="row"><button class="primary" id="exo-add">Ajouter l'exercice</button></div>
+        <div id="exo-list"></div>
+      </details>
+      <p class="msg ok" id="man-done" role="status"></p>
+      <div class="row"><button id="man-close">Fermer</button></div>
+    </div>
     <div class="card" id="imp-card">
       <h2>Importer un cours</h2>
       <p class="muted">Une photo (du cours, d'un polycopié ou du tableau), un PowerPoint, un fichier Word, PDF ou texte, ou un texte copié. Le fichier est lu sur cet appareil.</p>
@@ -176,8 +204,15 @@
       <div class="row"><button id="ajout-go">Ajouter cette phrase</button></div>
     </div>
     <div class="card" id="edit-card" hidden>
-      <h3>Choisis les mots à cacher</h3>
-      <p class="muted">Touche un mot pour le cacher ou le montrer. Les mots surlignés seront à retrouver.</p>
+      <h2>Modifier la notion</h2>
+      <div class="row"><b>Type</b><span class="seg2" id="ed-kind" role="group" aria-label="Type de notion"><button data-k="def" class="on">Définition</button><button data-k="concept">Concept</button><button data-k="form">Formule</button><button data-k="date">Date</button><button data-k="info">À retenir</button><button data-k="regle">Règle</button></span></div>
+      <div class="row"><label for="ed-term"><b>Terme</b></label><input type="text" id="ed-term" style="flex:1 1 200px"><label for="ed-chap"><b>Chapitre</b></label><input type="text" id="ed-chap" list="chap-list" style="flex:1 1 200px"></div>
+      <div class="fld"><label for="ed-def">Définition ou contenu</label><textarea id="ed-def"></textarea></div>
+      <div class="fld"><label for="ed-ex">Exemple</label><textarea id="ed-ex"></textarea></div>
+      <div class="fld"><label for="ed-why">Explication</label><textarea id="ed-why"></textarea></div>
+      <label class="toggle"><input type="checkbox" id="ed-on" checked> Je veux travailler cette notion</label>
+      <h3>Les mots cachés <span class="muted">(pour la révision et les questions à trous)</span></h3>
+      <p class="muted">Touche un mot pour le cacher ou le montrer. Si tu changes le terme ou la définition, c'est le terme qui sera caché.</p>
       <div class="editor" id="editor"></div>
       <div class="row"><button class="primary" id="edit-ok">Enregistrer</button><button id="edit-del" class="danger">Supprimer la notion</button><button id="edit-x">Fermer</button></div>
     </div>
@@ -200,7 +235,7 @@
         <button class="primary" id="lec-play">Lire tout le cours</button><button id="lec-del">Enlever ce cours</button></div>
       <div class="reader" id="lec-text"></div>
       <div class="float" id="lec-bar" hidden>
-        <div class="row"><button id="lec-say">🔊 Écouter la phrase</button><button id="lec-nc" aria-pressed="false">Je ne comprends pas</button><button id="lec-mot">Garder un mot</button></div>
+        <div class="row"><button id="lec-say">🔊 Écouter la phrase</button><button id="lec-nc" aria-pressed="false">Je ne comprends pas</button><button id="lec-mot">Garder un mot</button><button id="lec-carte">Faire une carte</button></div>
         <div class="row" id="lec-words" hidden></div>
       </div>
     </div>
@@ -286,11 +321,43 @@
 
   <!-- ===== Quiz et jeux ===== -->
   <section id="tab-jeux" class="stack" hidden>
-    <div class="card">
-      <p class="muted">Pour s'entraîner autrement. Pas de chrono : on gagne de l'XP en travaillant, pas en allant vite.</p>
-      <div class="row"><label for="jx-mat"><b>Matière</b></label><select id="jx-mat" style="flex:1 1 200px"></select></div>
-      <div class="row"><span class="seg2" id="jx-mode"><button data-m="quiz" class="on">Quiz</button><button data-m="match">Associer</button></span><span class="seg2 niv" aria-label="Difficulté"><button data-n="1">Facile</button><button data-n="2" class="on">Moyen</button><button data-n="3">Difficile</button></span>
+    <div class="card" id="jx-conf">
+      <p class="muted">Une question sur une carte. Choisis ta réponse : la carte se retourne et t'explique la correction. Pas de chrono.</p>
+      <div class="row"><label for="jx-mat"><b>Matière</b></label><select id="jx-mat" style="flex:1 1 200px"></select><label for="jx-chap"><b>Chapitre</b></label><select id="jx-chap" style="flex:1 1 200px"></select></div>
+      <div class="row"><span class="seg2" id="jx-mode"><button data-m="quiz" class="on">Quiz en cartes</button><button data-m="match">Jeu « Associer »</button></span><span class="seg2 niv" aria-label="Difficulté"><button data-n="1">Facile</button><button data-n="2" class="on">Moyen</button><button data-n="3">Difficile</button></span>
         <button class="primary" id="jx-go">Commencer</button></div>
+    </div>
+    <div id="qc" class="stack" hidden>
+      <div class="row" style="justify-content:space-between"><span class="muted" id="qc-pos"></span><span class="row"><span class="muted" id="qc-score"></span><button id="qc-quit">Arrêter</button></span></div>
+      <div class="bar"><i id="qc-prog"></i></div>
+      <div class="flip" id="qc-flip">
+        <div class="face front" id="qc-front">
+          <div class="src" id="qc-tag"></div>
+          <p class="qtext" id="qc-q"></p>
+          <p class="quote" id="qc-quote" hidden></p>
+          <div class="choices lettered" id="qc-c" role="group" aria-label="Choix de réponse"></div>
+          <div class="row"><button id="qc-lire">🔊 Écouter</button><button id="qc-turn" hidden>Voir la correction</button><span class="muted kbd-hint">Touche une réponse, ou tape 1, 2, 3…</span></div>
+        </div>
+        <div class="face back" id="qc-back" inert aria-hidden="true">
+          <p class="verdict" id="qc-verdict" role="status"></p>
+          <div id="qc-ans" class="stack" style="gap:8px"></div>
+          <div class="why" id="qc-why"></div>
+          <div class="row"><button id="qc-lire2">🔊 Écouter la correction</button><button id="qc-again">Revoir la question</button><button class="primary" id="qc-next">Question suivante →</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="card" id="mt" hidden>
+      <p class="muted">Touche un mot à gauche, puis la phrase qui va avec à droite.</p>
+      <div class="match"><div id="mt-l" class="mcol"></div><div id="mt-r" class="mcol"></div></div>
+    </div>
+    <div class="card" id="jx-end" hidden><h2 id="jx-end-t"></h2><p id="jx-end-s"></p><div id="jx-end-l" class="stack" style="gap:8px"></div><div class="row"><button class="primary" id="jx-again">Nouveau quiz</button><button id="jx-miss" hidden>Revoir mes erreurs</button></div></div>
+  </section>
+
+  <!-- ===== Questions à trous ===== -->
+  <section id="tab-trous" class="stack" hidden>
+    <div class="card">
+      <p class="muted">Une phrase de ton cours, avec un mot caché. Retrouve-le. Facile : 3 choix. Moyen : 4 choix. Difficile : tu l'écris toi-même.</p>
+      <div class="row"><label for="tr-mat"><b>Matière</b></label><select id="tr-mat" style="flex:1 1 200px"></select><span class="seg2 niv" aria-label="Difficulté"><button data-n="1">Facile</button><button data-n="2" class="on">Moyen</button><button data-n="3">Difficile</button></span><button class="primary" id="tr-go">Commencer</button></div>
     </div>
     <div class="card" id="qz" hidden>
       <div class="row" style="justify-content:space-between"><span class="muted" id="qz-pos"></span><span class="muted" id="qz-score"></span></div>
@@ -300,11 +367,42 @@
       <div class="row" id="qz-type" hidden><input type="text" id="qz-in" placeholder="Écris la réponse" style="flex:1 1 240px;font-size:19px" autocomplete="off" aria-label="Ta réponse"><button class="primary" id="qz-ok">Vérifier</button></div>
       <div class="row"><button id="qz-lire">🔊 Écouter</button><button class="primary" id="qz-next" hidden>Suivante</button></div>
     </div>
-    <div class="card" id="mt" hidden>
-      <p class="muted">Touche un mot à gauche, puis la phrase qui va avec à droite.</p>
-      <div class="match"><div id="mt-l" class="mcol"></div><div id="mt-r" class="mcol"></div></div>
+    <div class="card" id="tr-end" hidden><h2 id="tr-end-t"></h2><p id="tr-end-s"></p><div class="row"><button class="primary" id="tr-again">Recommencer</button></div></div>
+  </section>
+
+  <!-- ===== Mes cartes ===== -->
+  <section id="tab-cartes" class="stack" hidden>
+    <div class="card" id="ca-top">
+      <div class="row"><label for="ca-mat"><b>Matière</b></label><select id="ca-mat" style="flex:1 1 200px"></select><label for="ca-chap"><b>Chapitre</b></label><select id="ca-chap" style="flex:1 1 200px"></select></div>
+      <p class="muted" id="ca-n"></p>
+      <div class="row"><button class="primary" id="ca-go">Réviser mes cartes</button><button id="ca-new"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Nouvelle carte</button><button id="ca-from">Créer depuis mes notions</button><button id="ca-from-exo">Créer depuis mes exercices</button></div>
     </div>
-    <div class="card" id="jx-end" hidden><h2 id="jx-end-t"></h2><p id="jx-end-s"></p><div class="row"><button class="primary" id="jx-again">Rejouer</button></div></div>
+    <div class="card" id="ca-form" hidden>
+      <h2 id="ca-form-t">Nouvelle carte</h2>
+      <div class="row"><label for="ca-f-mat"><b>Matière</b></label><input type="text" id="ca-f-mat" list="mat-list" style="flex:1 1 200px"><label for="ca-f-chap"><b>Chapitre ou notion</b></label><input type="text" id="ca-f-chap" list="chap-list" style="flex:1 1 200px"></div>
+      <div class="fld"><label for="ca-front">Recto <span class="muted">(une question, une notion ou un mot)</span></label><textarea id="ca-front"></textarea></div>
+      <div class="fld"><label for="ca-back">Verso <span class="muted">(la réponse, la définition ou l'explication)</span></label><textarea id="ca-back"></textarea></div>
+      <div class="row"><button class="primary" id="ca-save">Ajouter la carte</button><button id="ca-cancel">Fermer</button><span class="muted" id="ca-saved" role="status"></span></div>
+    </div>
+    <div id="ca-run" class="stack" hidden>
+      <div class="row" style="justify-content:space-between"><span class="muted" id="cr-pos"></span><button id="cr-quit">Arrêter là</button></div>
+      <div class="bar"><i id="cr-prog"></i></div>
+      <div class="flip" id="cr-flip">
+        <div class="face front" id="cr-f">
+          <div class="row" style="justify-content:space-between"><span class="chip q">Recto</span><span class="src" id="cr-src"></span></div>
+          <p class="qtext cardtxt pre" id="cr-front"></p>
+          <div class="row" style="justify-content:center"><button class="primary" id="cr-turn">Retourner la carte <kbd>Espace</kbd></button><button id="cr-lire">🔊 Écouter</button></div>
+        </div>
+        <div class="face back" id="cr-b" inert aria-hidden="true">
+          <span class="chip ok" style="align-self:flex-start">Verso</span>
+          <p class="qtext cardtxt pre" id="cr-back"></p>
+          <p class="muted">Tu t'en souvenais ?</p>
+          <div class="grades"><button class="g1" data-cg="1">✗ Raté <small>revient tout de suite <kbd>1</kbd></small></button><button class="g2" data-cg="2">≈ Avec effort <small><span id="cr-w2"></span> <kbd>2</kbd></small></button><button class="g3" data-cg="3">✓ Facile <small><span id="cr-w3"></span> <kbd>3</kbd></small></button></div>
+          <div class="row"><button id="cr-lire2">🔊 Écouter</button><button id="cr-unturn">Revoir le recto</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="card" id="ca-list-card"><h2>Mes cartes</h2><div id="ca-list"></div></div>
   </section>
 
   <!-- ===== Examen blanc ===== -->
@@ -479,8 +577,9 @@
   <button data-group="prof"><svg class="ic" aria-hidden="true"><use href="#i-discu"/></svg>Prof</button>
 </nav>
 
+<datalist id="chap-list"></datalist>
 <div id="sheet"></div>
 <div class="ruler" id="ruler-t" hidden></div><div class="ruler" id="ruler-b" hidden></div>
-<script src="js/app.js?v=1.2"></script>
+<script src="js/app.js?v=1.3"></script>
 </body>
 </html>

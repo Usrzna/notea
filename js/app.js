@@ -114,7 +114,7 @@ function todayQueue(now = Date.now()) {
   if (onVacation()) return [];
   const budget = Math.max(60, (db.minutes || plannedToday()) * 60);
   const end = new Date(); end.setHours(23, 59, 59, 999);
-  const live = db.notions.filter(n => !finished(n, now));
+  const live = db.notions.filter(n => !finished(n, now) && !n.off);
   // d'abord ce qui s'oublie le plus, dans les matières qui comptent le plus et dont l'examen approche
   const due = live.filter(n => n.last && n.due <= end.getTime()).sort((a, b) => (1 - retr(b, now)) * weight(matOf(b), now) - (1 - retr(a, now)) * weight(matOf(a), now));
   const fresh = live.filter(n => !n.last).sort((a, b) => weight(matOf(b), now) - weight(matOf(a), now) || (b.mark === "dif" || b.mark === "q") - (a.mark === "dif" || a.mark === "q") || a.created - b.created)
@@ -202,7 +202,7 @@ function endSession() {
 }
 $("go").addEventListener("click", startSession);
 $("voir").addEventListener("click", reveal);
-document.querySelectorAll(".grades button").forEach(b => b.addEventListener("click", () => grade(Number(b.dataset.g))));
+document.querySelectorAll("#noter .grades button").forEach(b => b.addEventListener("click", () => grade(Number(b.dataset.g))));
 $("quit").addEventListener("click", endSession);
 $("bilan-ok").addEventListener("click", () => { $("bilan").hidden = true; $("accueil").hidden = false; $("tuiles").hidden = false; renderToday(); });
 document.addEventListener("keydown", e => {
@@ -238,12 +238,13 @@ function openEditor(n) {
     s.addEventListener("click", tog); s.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tog(); } });
     ed.append(s);
   });
-  $("edit-card").hidden = false; $("edit-card").scrollIntoView({block: "start", behavior: "smooth"});
+  edFill(n); $("edit-card").hidden = false; $("edit-card").scrollIntoView({block: "start", behavior: "smooth"});
 }
 $("edit-ok").addEventListener("click", () => {
   if (!editing) return;
-  if (!editHoles.size) { note("Choisis au moins un mot à cacher.", "warn"); return; }
-  editing.holes = [...editHoles].sort((a, b) => a - b); save(); $("edit-card").hidden = true; editing = null; renderList(); renderToday(); note("Notion enregistrée.", "ok");
+  const rebuilt = edApply(editing);
+  if (!rebuilt && !editHoles.size) { note("Choisis au moins un mot à cacher.", "warn"); return; }
+  if (!rebuilt) editing.holes = [...editHoles].sort((a, b) => a - b); delete editing._rebuilt; save(); $("edit-card").hidden = true; editing = null; renderList(); renderToday(); note("Notion enregistrée.", "ok");
 });
 $("edit-del").addEventListener("click", () => { if (!editing) return; db.notions = db.notions.filter(x => x !== editing); save(); $("edit-card").hidden = true; const gone = editing; editing = null; renderList(); renderToday(); noteUndo("Notion supprimée.", () => { db.notions.push(gone); save(); renderList(); renderToday(); }); });
 $("edit-x").addEventListener("click", () => { $("edit-card").hidden = true; editing = null; });
@@ -519,9 +520,9 @@ $("pick-go").addEventListener("click", () => {
   const chosen = picks.filter(x => x.on); if (!chosen.length) { note("Surligne au moins une phrase.", "warn"); return; }
   const have = new Set(db.notions.map(n => n.text)); const src = ($("imp-mat").value.trim() || "Cours importé") + " · " + new Date().toLocaleDateString("fr-FR");
   const exOf = o => { if (!ana || !o) return ""; for (let k = o.idx + 1; k < ana.all.length && k <= o.idx + 3; k++) { const z = ana.all[k]; if (z.sec !== o.sec) break; if (z.role === "ex") return z.text; if (z.ess) break; } return ""; };
-  let added = 0; chosen.forEach(x => { if (have.has(x.text)) return; const nn = makeNotion(x.text, "imp", src, ana && ana.kwl, x.o && x.o.role);
+  let added = 0; chosen.forEach(x => { if (have.has(x.text)) return; const nn = makeNotion(x.text, "imp", src, ana && ana.kwl, x.o && x.o.role); nn.chap = ((x.o && ana && ana.secs[x.o.sec]) ? ana.secs[x.o.sec].title : "") || anaChap;
     const e = exOf(x.o); if (e) nn.ex = e; db.notions.push(nn); have.add(x.text); added++; });
-  saveCours($("imp-mat").value.trim() || "Cours importé", $("imp-text").value.trim()); save(); useTool("notions"); renderList(); renderToday(); $("pick-card").hidden = true; $("imp-text").value = ""; impOpen = false; tab("jour");
+  fixExamples(db.notions); saveCours($("imp-mat").value.trim() || "Cours importé", $("imp-text").value.trim()); save(); useTool("notions"); renderList(); renderToday(); $("pick-card").hidden = true; $("imp-text").value = ""; impOpen = false; anaChap = ""; tab("jour");
   note(`${added} notion${added > 1 ? "s" : ""} ajoutée${added > 1 ? "s" : ""}. Elles sont dans ta révision du jour.`, "ok");
 });
 
@@ -549,14 +550,14 @@ const keyWords = n => { const t = tokens(n.text), h = new Set(n.holes), seen = n
 
 /* ---------- Feuille blanche ---------- */
 let fb = {mode: "tout", all: [], targets: [], miss: [], one: null};
-const matsWithNotions = () => [...new Set(db.notions.map(matOf))].sort();
+const matsWithNotions = () => [...new Set(db.notions.map(matOf).concat((db.exos || []).map(matOf), (db.cards || []).map(matOf)))].sort();
 function fbFill() {
   const s = $("fb-mat"), cur = s.value; s.replaceChildren();
   matsWithNotions().forEach(m => { const o = document.createElement("option"); o.value = o.textContent = m; s.append(o); });
   if (cur && [...s.options].some(o => o.value === cur)) s.value = cur;
 }
 function fbStart(targets) {
-  fb.all = db.notions.filter(n => matOf(n) === $("fb-mat").value);
+  fb.all = db.notions.filter(n => !n.off && matOf(n) === $("fb-mat").value);
   fb.targets = targets || fb.all; $("fb-text").value = ""; $("fb-intro").hidden = false; fb.help = false; $("fb-cours").hidden = true; $("fb-help").textContent = "Je bloque : voir le cours"; $("fb-res").hidden = true; const p = $("fb-prompt"); p.hidden = false;
   if (!fb.all.length) { p.textContent = "Ajoute d'abord un cours dans « Mes cours »."; $("fb-check").disabled = true; return; }
   $("fb-check").disabled = false;
@@ -659,7 +660,7 @@ function renderActs() {
 }
 function plan() {
   const now = Date.now(), d0 = new Date(); d0.setHours(0, 0, 0, 0); const days = [];
-  const live = db.notions.filter(n => !finished(n, now)), ms = matsWithNotions();
+  const live = db.notions.filter(n => !finished(n, now) && !n.off), ms = matsWithNotions();
   for (let d = 0; d < 7; d++) {
     const date = new Date(d0); date.setDate(d0.getDate() + d); const nx = new Date(date); nx.setDate(date.getDate() + 1);   // pas « + 24 h » : changement d'heure
     const a0 = date.getTime(), a1 = nx.getTime(), wd = (date.getDay() + 6) % 7;
@@ -818,7 +819,7 @@ function distractorsN(n, k = 3) {
   const ans = norm(answerOf(n)), L = ans.length, seen = new Set([ans]);
   return db.notions.filter(x => x !== n && answerOf(x)).map(x => ({a: answerOf(x), n: x, same: matOf(x) === matOf(n)}))
     .filter(x => { const k2 = norm(x.a); if (seen.has(k2)) return false; seen.add(k2); return true; })
-    .sort((x, y) => (y.same - x.same) || Math.abs(x.a.length - L) - Math.abs(y.a.length - L) || Math.random() - .5)
+    .sort((x, y) => (y.same - x.same) || ((chapOf(y.n) && chapOf(y.n) === chapOf(n)) - (chapOf(x.n) && chapOf(x.n) === chapOf(n))) || Math.abs(x.a.length - L) - Math.abs(y.a.length - L) || Math.random() - .5)
     .slice(0, k);
 }
 const distractors = (n, k = 3) => distractorsN(n, k).map(x => x.a);
@@ -844,19 +845,15 @@ const RXW = /^([^\p{L}\p{N}]*(?:(?:[lLdDjJnNsScCmMtT]|[qQ]u)['’])?)(.*?)([^\p{
 function swapHoles(n, rep) { const t = tokens(n.text), h = [...n.holes].sort((a, b) => a - b);
   return t.map((w, i) => { if (!h.includes(i)) return w; if (i !== h[0]) return ""; const m = w.match(RXW) || ["", "", w, ""]; return m[1] + rep + m[3]; }).join("").replace(/\s{2,}/g, " "); }
 function qTypes(n) {
-  const ty = [], hard = db.niv === 3, need = db.niv === 1 ? 1 : 2;
-  if (n.holes.length && answerOf(n)) ty.push("trou");
-  if (defOf(n) && (hard || othersBy(n, defOf, need).length >= need)) ty.push("def");
-  if (!hard && n.holes.length && answerOf(n) && distractorsN(n, 1).length) ty.push("vf");
-  if (!hard && n.ex && othersBy(n, x => x.ex, 1).length) ty.push("ex");
-  return ty;
+  if (n.off || !n.holes.length || !answerOf(n)) return [];
+  return db.niv === 3 || distractorsN(n, 2).length >= 2 ? ["trou"] : [];
 }
 let qz = {list: [], i: 0, ok: 0, last: "", cur: null};
-function pool() { const m = $("jx-mat").value; return db.notions.filter(n => (!m || matOf(n) === m) && qTypes(n).length); }
+function pool() { const m = $("tr-mat").value; return db.notions.filter(n => (!m || matOf(n) === m) && qTypes(n).length); }
 function quizStart() {
   const now = Date.now(), p = pool().sort((a, b) => ((a.last ? a.due : 0) <= now ? 0 : 1) - ((b.last ? b.due : 0) <= now ? 0 : 1) || Math.random() - .5);
-  if (db.notions.filter(n => answerOf(n)).length < 4) { note("Il faut au moins 4 notions pour un quiz.", "warn"); return; }
-  qz = {list: p.slice(0, 10), i: 0, ok: 0, last: "", cur: null}; $("jx-end").hidden = true; $("mt").hidden = true; $("qz").hidden = false; quizShow();
+  if (p.length < 1 || db.notions.filter(n => answerOf(n)).length < 4) { note("Il faut au moins 4 notions pour les questions à trous.", "warn"); return; }
+  qz = {list: p.slice(0, 10), i: 0, ok: 0, last: "", cur: null}; $("tr-end").hidden = true; $("qz").hidden = false; quizShow();
 }
 function quizShow() {
   const n = qz.list[qz.i], ty = qTypes(n); let t = ty[Math.floor(Math.random() * ty.length)];
@@ -866,7 +863,7 @@ function quizShow() {
   $("qz-next").hidden = true; $("qz-why").hidden = true;
   const q = $("qz-q"), box = $("qz-c"); q.replaceChildren(); box.replaceChildren();
   const typed = db.niv === 3 && (t === "trou" || t === "def"); $("qz-type").hidden = !typed; box.hidden = typed;
-  const k = db.niv === 1 ? 1 : 3, tag = txt => { const c = document.createElement("span"); c.className = "chip"; c.textContent = txt; return c; };
+  const k = db.niv === 1 ? 2 : 3, tag = txt => { const c = document.createElement("span"); c.className = "chip"; c.textContent = txt; return c; };
   let good = "", opts = [];
   if (t === "trou") { q.append(holeHTML(n, false)); good = answerOf(n); opts = distractorsN(n, k); }
   else if (t === "def") { q.append(tag("Définition"), " Qu'est-ce que « " + termOf(n) + " » ?"); good = defOf(n); opts = othersBy(n, defOf, k); }
@@ -905,7 +902,7 @@ function quizAnswer(btn, good, other) {
   if (onceToday("n" + n.id)) gainN(1, "quiz");
   $("qz-next").hidden = false; $("qz-next").textContent = qz.i + 1 < qz.list.length ? "Suivante" : "Voir le score"; $("qz-next").focus();
 }
-$("qz-next").addEventListener("click", () => { qz.i++; if (qz.i < qz.list.length) quizShow(); else jeuFin(`${qz.ok} sur ${qz.list.length}`, qz.ok === qz.list.length ? "Parfait !" : "Les notions ratées reviendront plus tôt dans ta révision."); });
+$("qz-next").addEventListener("click", () => { qz.i++; if (qz.i < qz.list.length) quizShow(); else trFin(`${qz.ok} sur ${qz.list.length}`, qz.ok === qz.list.length ? "Parfait !" : "Les notions ratées reviendront plus tôt dans ta révision."); });
 $("qz-ok").addEventListener("click", () => { const v = $("qz-in").value.trim(); if (!v) return; const c = qz.cur, said = new Set(wordsOf(v)); let good;
   if (c.t === "def") { const need = [...new Set(c.good.split(/\s+/).map(clean).filter(w => w.length >= 4 && !STOP.has(w)))]; good = need.length ? need.filter(w => found(said, w)).length / need.length >= 0.5 : found(said, c.good); }
   else good = found(said, c.good);
@@ -916,9 +913,9 @@ $("qz-lire").addEventListener("click", () => { if (qz.cur) speakEl($("qz-q")); }
 /* ---------- Jeu « Associer » : 5 mots à relier à leur phrase. Pas de chrono. ---------- */
 let mt = {sel: null, left: 0};
 function matchStart() {
-  const p = shuffle(pool()).filter((n, i, a) => a.findIndex(x => norm(answerOf(x)) === norm(answerOf(n))) === i).slice(0, 5);
+  const p = shuffle(db.notions.filter(n => !n.off && answerOf(n) && (!$("jx-mat").value || matOf(n) === $("jx-mat").value))).filter((n, i, a) => a.findIndex(x => norm(answerOf(x)) === norm(answerOf(n))) === i).slice(0, 5);
   if (p.length < 3) { note("Il faut au moins 3 notions dans cette matière pour jouer.", "warn"); return; }
-  $("jx-end").hidden = true; $("qz").hidden = true; $("mt").hidden = false; mt = {sel: null, left: p.length};
+  $("jx-end").hidden = true; $("qc").hidden = true; $("mt").hidden = false; mt = {sel: null, left: p.length};
   const L = $("mt-l"), R = $("mt-r"); L.replaceChildren(); R.replaceChildren();
   shuffle([...p]).forEach(n => { const b = document.createElement("button"); b.textContent = answerOf(n); b.dataset.id = n.id;
     b.addEventListener("click", () => { if (b.disabled) return; L.querySelectorAll("button").forEach(x => x.classList.remove("sel")); b.classList.add("sel"); mt.sel = b; }); L.append(b); });
@@ -931,13 +928,13 @@ function matchStart() {
     }); R.append(b); });
 }
 function jeuFin(t, sub) {
-  $("qz").hidden = true; $("mt").hidden = true; $("jx-end").hidden = false; $("jx-end-t").textContent = t; $("jx-end-s").textContent = sub;
+  $("qc").hidden = true; $("mt").hidden = true; $("jx-end").hidden = false; $("jx-miss").hidden = true; $("jx-end-l").replaceChildren(); $("jx-end-t").textContent = t; $("jx-end-s").textContent = sub;
   if (onceToday("jeu-" + jx)) gainN(5, "jeu"); renderToday();
 }
 let jx = "quiz";
 document.querySelectorAll("#jx-mode button").forEach(b => b.addEventListener("click", () => { jx = b.dataset.m; document.querySelectorAll("#jx-mode button").forEach(x => x.classList.toggle("on", x === b)); }));
-$("jx-go").addEventListener("click", () => jx === "quiz" ? quizStart() : matchStart());
-$("jx-again").addEventListener("click", () => jx === "quiz" ? quizStart() : matchStart());
+$("jx-go").addEventListener("click", () => jx === "quiz" ? cqStart() : matchStart());
+$("jx-again").addEventListener("click", () => jx === "quiz" ? cqStart() : matchStart());
 
 /* ---------- Carte mentale faite par l'élève ----------
    L'élève écrit ses idées en liste (2 espaces ou un tiret = un niveau de plus).
@@ -1054,7 +1051,7 @@ const exSel = id => document.querySelector(`#${id} button.on`);
 function exStart() {
   const m = $("ex-mat").value, form = exSel("ex-form").dataset.f, nb = Number(exSel("ex-nb").dataset.n);
   let dur = Number(exSel("ex-dur").dataset.d) * 60; if (dur && $("ex-tt").checked) dur = Math.round(dur * 4 / 3);
-  const ns = shuffle(db.notions.filter(n => answerOf(n) && (!m || matOf(n) === m)));
+  const ns = shuffle(db.notions.filter(n => !n.off && answerOf(n) && (!m || matOf(n) === m)));
   if (ns.length < 4) { note("Il faut au moins 4 notions dans cette matière pour un examen.", "warn"); return; }
   const kinds = ["qcm", "trou", "ouv"];
   const qs = ns.slice(0, nb).map((n, i) => ({n, k: form === "mix" ? (keyWords(n).length >= 2 ? kinds[i % 3] : kinds[i % 2]) : (form === "ouv" && keyWords(n).length < 2 ? "trou" : form), a: null}));
@@ -1071,9 +1068,12 @@ function exShow() {
   const q = ex.qs[ex.i], n = q.n; $("ex-pos").textContent = `Question ${ex.i + 1} sur ${ex.qs.length}`;
   $("ex-kind").textContent = q.k === "qcm" ? "Choisis la bonne réponse." : q.k === "trou" ? "Écris le mot qui manque." : "Explique avec tes mots.";
   $("ex-c").hidden = q.k !== "qcm"; $("ex-in").hidden = q.k !== "trou"; $("ex-ta").hidden = q.k !== "ouv";
-  if (q.k === "ouv") $("ex-q").textContent = `Que sais-tu sur « ${answerOf(n)} » ?`; else $("ex-q").replaceChildren(holeHTML(n, false));
+  if (q.k === "qcm" && q.g === undefined) { q.g = null; for (const ty of shuffle(qPlan(n).filter(t => t !== "affirm" || !factOf(n)))) { const z = makeQ(n, ty, 3); if (z) { q.g = z; break; } } }
+  if (q.k === "ouv") { const f = factOf(n); $("ex-q").textContent = f ? `Explique avec tes mots : « ${f.term} »` + (n.ex ? ", et donne un exemple." : ".") : `Que sais-tu sur « ${answerOf(n)} » ?`; }
+  else if (q.k === "qcm" && q.g) $("ex-q").textContent = q.g.text + (q.g.quote ? " « " + q.g.quote + " »" : "");
+  else $("ex-q").replaceChildren(holeHTML(n, false));
   $("ex-in").value = ""; $("ex-ta").value = ""; const box = $("ex-c"); box.replaceChildren();
-  if (q.k === "qcm") shuffle([answerOf(n), ...distractors(n)]).forEach(a => { const b = document.createElement("button"); b.textContent = a;
+  if (q.k === "qcm") shuffle(q.g ? [q.g.good, ...q.g.opts.map(o => o.a)] : [answerOf(n), ...distractors(n)]).forEach(a => { const b = document.createElement("button"); b.textContent = a;
     b.addEventListener("click", () => { box.querySelectorAll("button").forEach(x => x.classList.toggle("sel", x === b)); q.a = a; }); box.append(b); });
   $("ex-next").textContent = ex.i + 1 < ex.qs.length ? "Valider et continuer" : "Rendre ma copie";
   (q.k === "trou" ? $("ex-in") : q.k === "ouv" ? $("ex-ta") : $("ex-next")).focus();
@@ -1081,7 +1081,7 @@ function exShow() {
 function exSave() { const q = ex.qs[ex.i]; if (q.k === "trou") q.a = $("ex-in").value.trim(); if (q.k === "ouv") q.a = $("ex-ta").value.trim(); }
 function exCorrect(q) {
   if (!q.a) return false; const n = q.n;
-  if (q.k === "qcm") return q.a === answerOf(n);
+  if (q.k === "qcm") return q.a === (q.g ? q.g.good : answerOf(n));
   if (q.k === "trou") return found(new Set(wordsOf(q.a)), answerOf(n));
   const kw = keyWords(n), said = new Set(wordsOf(q.a)); return kw.filter(w => found(said, w)).length >= Math.ceil(kw.length / 2);
 }
@@ -1110,7 +1110,9 @@ const TOOLS = {
   blanche: ["Feuille blanche", "Écris tout ce dont tu te souviens, puis vérifie."],
   discu: ["Discussion", "L'IA t'explique, te questionne, ou tu expliques à un enfant."],
   carte: ["Carte mentale", "Tes idées, avec tes mots, en carte."],
-  jeux: ["Quiz et jeux", "QCM et jeu « Associer », sans chrono."],
+  jeux: ["Quiz", "Une carte qui se retourne, avec la correction expliquée."],
+  trous: ["Questions à trous", "Retrouve le mot caché de ton cours."],
+  cartes: ["Mes cartes", "Recto, verso : tes cartes de révision."],
   examen: ["Examen blanc", "Comme le jour J, avec une note sur 20."],
   planning: ["Mon planning", "Tes échéances et ta semaine."],
   lecture: ["Lire et écouter", "Ton cours lu à voix haute, mot par mot."],
@@ -1220,7 +1222,7 @@ const TABS = {
   jour: ["Accueil", "accueil"],
   planning: ["Agenda & planning", "agenda"], progres: ["Mes progrès", "agenda"], imprimer: ["Imprimer", "agenda"],
   notions: ["Mes cours", "cours"], lecture: ["Lire et écouter", "cours"],
-  notes: ["Mon carnet", "carnet"], blanche: ["Feuille blanche", "carnet"], carte: ["Carte mentale", "carnet"], jeux: ["Quiz et jeux", "carnet"], examen: ["Examen blanc", "carnet"], carnet: ["Carnet de mots", "carnet"],
+  notes: ["Mon carnet", "carnet"], cartes: ["Mes cartes", "carnet"], jeux: ["Quiz", "carnet"], trous: ["Questions à trous", "carnet"], blanche: ["Feuille blanche", "carnet"], carte: ["Carte mentale", "carnet"], examen: ["Examen blanc", "carnet"], carnet: ["Carnet de mots", "carnet"],
   discu: ["Prof particulier", "prof"],
   acces: ["Accessibilité", "reglages"], reglages: ["Paramètres", "reglages"]
 };
@@ -1242,9 +1244,12 @@ function tab(name, fromNav) {
   if (name === "notions") { renderFolders(); const dl = $("mat-list"); dl.replaceChildren(); matsWithNotions().forEach(m => { const o = document.createElement("option"); o.value = m; dl.append(o); }); }
   if (name === "jour") { renderTiles(); renderToday(); }
   if (name === "discu") { fillMats($("dc-mat")); dcEngine().then(e => { $("dc-chip").textContent = e === "builtin" ? "IA sur l'appareil" : e === "api" ? "IA : Claude (clé)" : "IA : via Claude.ai"; }); }
-  if (["blanche", "jeux", "examen", "carte", "planning", "lecture", "carnet"].includes(name)) useTool(name);
+  if (["blanche", "jeux", "trous", "cartes", "examen", "carte", "planning", "lecture", "carnet"].includes(name)) useTool(name);
   if (name === "blanche") { fbFill(); fbStart(); }
-  if (name === "jeux") fillMats($("jx-mat"));
+  if (name === "jeux") { fillMats($("jx-mat")); fillChapSel($("jx-chap"), $("jx-mat").value); }
+  if (name === "trous") fillMats($("tr-mat"));
+  if (name === "cartes") renderCartes();
+  fillDL();
   if (name === "examen") fillMats($("ex-mat"));
   if (name === "carte") { fillMats($("cm-mat")); $("cm-mat").options[0].textContent = "Choisis une matière"; $("cm-text").value = db.maps[$("cm-mat").value || "_"] || ""; drawMap(); }
   if (name === "planning") { renderMats(); renderActs(); renderPlan(); }
@@ -1501,7 +1506,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.2";
+const VERSION = "1.3";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -1571,7 +1576,7 @@ $("bv-imp").addEventListener("click", () => { impOpen = true; tab("notions"); $(
 /* ---------- Mes progrès : ce que je retiens, ce qui arrive. Jamais de reproche, jamais de « série perdue ». ---------- */
 function statTile(big, label) { const d = document.createElement("div"); d.className = "stat"; const b = document.createElement("b"); b.textContent = big; const s = document.createElement("span"); s.textContent = label; d.append(b, s); return d; }
 function renderProgres() {
-  const now = Date.now(), live = db.notions.filter(n => !finished(n, now)), seen = live.filter(n => n.last), fresh = live.length - seen.length;
+  const now = Date.now(), live = db.notions.filter(n => !finished(n, now) && !n.off), seen = live.filter(n => n.last), fresh = live.length - seen.length;
   const solid = seen.filter(n => n.S >= 21).length, mem = seen.length ? Math.round(seen.reduce((s, n) => s + retr(n, now), 0) / seen.length * 100) : 0;
   const box = $("pg-stats"); box.replaceChildren();
   $("pg-vide").hidden = !!live.length; $("pg-card").hidden = $("pg-week-card").hidden = $("pg-mat-card").hidden = !live.length;
@@ -1640,7 +1645,7 @@ function pageHead(name) {
 
 /* ---------- Accueil : 3 chiffres et la prochaine session ---------- */
 function homeStats(q) {
-  const now = Date.now(), live = db.notions.filter(n => !finished(n, now));
+  const now = Date.now(), live = db.notions.filter(n => !finished(n, now) && !n.off);
   $("st-min").textContent = q.length ? Math.max(1, Math.round(q.reduce((s, x) => s + secFor(x), 0) / 60)) : 0;
   $("st-n").textContent = q.length; $("st-pc").textContent = mastery(live, now) + " %";
   let h = "–"; try { if (q.length) { const it = plan()[0].items.find(x => x.type === "rev"); h = it ? hm(it.f) : "Libre"; } } catch (e) {}
@@ -1660,7 +1665,7 @@ function renderFolders() {
   ms.forEach((m, i) => { const ns = db.notions.filter(n => matOf(n) === m), nc = db.cours.filter(c => c.mat === m).length, pc = mastery(ns, now);
     const b = el("button", "folder f" + (i % 4)); b.setAttribute("aria-label", `${m}, ${ns.length} notions, maîtrise ${pc} %. Ouvrir dans mon carnet`);
     const tr = el("span", "track"), bar = document.createElement("i"); bar.style.width = Math.max(4, pc) + "%"; tr.append(bar);
-    b.append(svgIc("folder"), el("b", "", m), el("span", "sub", (nc ? nc + " cours · " : "") + ns.length + " notion" + (ns.length > 1 ? "s" : "")), tr, el("span", "sub", "Maîtrise " + pc + " %"));
+    b.append(svgIc("folder"), el("b", "", m), el("span", "sub", (chN(m) ? chN(m) + " chapitre" + (chN(m) > 1 ? "s" : "") + " · " : nc ? nc + " cours · " : "") + ns.length + " notion" + (ns.length > 1 ? "s" : "")), tr, el("span", "sub", "Maîtrise " + pc + " %"));
     b.addEventListener("click", () => { nMat = m; nFilter = "tout"; tab("notes"); }); box.append(b); });
   $("imp-card").hidden = ms.length > 0 && !impOpen && $("pick-card").hidden;
 }
@@ -1668,8 +1673,8 @@ $("imp-open").addEventListener("click", () => { impOpen = true; $("imp-card").hi
 
 /* ---------- Mon carnet de notions : des filtres simples, rangé par matière puis par cours ---------- */
 var nFilter = "tout", nMat = "";
-const catOf = n => (n.lapses || 0) >= 2 || n.mark === "rate" ? "retr" : !n.last ? "new" : n.S >= 7 ? "ok" : "peu";
-const CATS = [["tout", "Toutes"], ["retr", "À retravailler"], ["peu", "Peu compris"], ["ok", "Réussies"]];
+const catOf = n => n.off ? "off" : (n.lapses || 0) >= 2 || n.mark === "rate" ? "retr" : !n.last ? "new" : n.S >= 7 ? "ok" : "peu";
+const CATS = [["tout", "Toutes"], ["retr", "À retravailler"], ["peu", "Peu compris"], ["ok", "Réussies"], ["off", "Mises de côté"]];
 function renderList() {
   const now = Date.now(), base = db.notions.filter(n => !nMat || matOf(n) === nMat);
   const nf = $("nf"); nf.replaceChildren();
@@ -1685,16 +1690,18 @@ function renderList() {
     const head = el("div", "mhead"), dot = el("span", "dot"); dot.style.background = colOf(m);
     const tr = el("span", "track"), bar = document.createElement("i"); bar.style.width = Math.max(3, pc) + "%"; tr.append(bar);
     const line = el("div", "row"); line.append(dot, el("b", "", m), el("span", "muted", `· ${all.length} notion${all.length > 1 ? "s" : ""} · Maîtrise ${pc} %`)); head.append(line, tr); box.append(head);
-    const groups = new Map(); mine.forEach(n => { const k = n.src || m; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(n); });
+    const groups = new Map(); mine.forEach(n => { const k = chapOf(n) ? "§" + chapOf(n) : (n.src || m); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(n); });
     [...groups.entries()].forEach(([src, ns], gi) => {
       const d = el("details", "chap"); d.open = groups.size === 1 || nFilter !== "tout"; const s = document.createElement("summary");
-      const part = src.includes(" · ") ? src.split(" · ").slice(1).join(" · ") : "";
-      s.append(el("b", "", /^\d/.test(part) ? "Cours du " + part : part === "carnet" ? "Mes mots du carnet" : part || "Notions ajoutées à la main"), el("span", "muted", ns.length + " notion" + (ns.length > 1 ? "s" : ""))); d.append(s);
+      const part = src.startsWith("§") ? "" : src.includes(" · ") ? src.split(" · ").slice(1).join(" · ") : "";
+      s.append(el("b", "", src.startsWith("§") ? src.slice(1) : /^\d/.test(part) ? "Cours du " + part : part === "carnet" ? "Mes mots du carnet" : part || "Notions ajoutées à la main"), el("span", "muted", ns.length + " notion" + (ns.length > 1 ? "s" : ""))); d.append(s);
       ns.sort((a, b) => (a.due || 0) - (b.due || 0)).forEach(n => {
         const r = el("div", "nrow"), l = document.createElement("div"), t = el("p", "t"); t.append(holeHTML(n, true));
         const w = el("p", "when src"); w.append(srcHTML(n), document.createTextNode(" · " + (n.last ? "revient " + when(n.due) : "nouvelle")));
         const c = catOf(n); if (c === "retr") w.append(" ", el("span", "chip rate", "À retravailler")); else if (c === "ok") w.append(" ", el("span", "chip ok", "✓ Réussie"));
-        l.append(t, w); const b = el("button", "", "Modifier"); b.addEventListener("click", () => openEditor(n)); r.append(l, b); d.append(r); });
+        l.append(t, w); const b = el("button", "", "Modifier"); b.addEventListener("click", () => openEditor(n));
+        const tg = el("label", "toggle"), cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !n.off; cb.addEventListener("change", () => { n.off = !cb.checked; save(); renderList(); renderToday(); }); tg.append(cb, "À travailler");
+        if (n.off) r.classList.add("off"); const a = el("div", "row"); a.append(tg, b); r.append(l, a); d.append(r); });
       box.append(d); });
   });
 }
@@ -1745,6 +1752,417 @@ async function takeEdt(input) {
 ["edt-file", "edt-photo"].forEach(id => { $(id).addEventListener("change", () => takeEdt($(id)));
   $(id).previousElementSibling.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $(id).click(); } }); });
 $("edt-main").addEventListener("click", () => { $("acts-t").scrollIntoView({block: "start", behavior: "smooth"}); $("act-label").focus(); });
+
+
+/* =====================================================================
+   Version 1.3 : des questions plus justes, le vrai Quiz en cartes qui se retournent,
+   les questions à trous à part, et la création à la main (notions, exercices, cartes).
+   ===================================================================== */
+db.exos = db.exos || []; db.cards = db.cards || [];
+var KINDS = [["def", "Définition"], ["concept", "Concept"], ["form", "Formule"], ["date", "Date"], ["info", "À retenir"], ["regle", "Règle"]];
+var KLAB = {def: "Définition", concept: "Concept", form: "Formule", date: "Date", info: "À retenir", regle: "Règle"};
+var KFIELDS = {def: ["Le mot", "Sa définition"], concept: ["Le concept", "Ce qu'il faut comprendre"], form: ["Le nom de la formule", "La formule"],
+  date: ["La date", "Ce qui s'est passé"], info: ["Le sujet", "Ce qu'il faut retenir"], regle: ["Le sujet de la règle", "La règle"]};
+var DEFQ = {def: t => `Que signifie « ${t} » ?`, concept: t => `Qu'est-ce que « ${t} » ?`, form: t => `Quelle est la formule de « ${t} » ?`,
+  date: t => `Que s'est-il passé : « ${t} » ?`, info: t => `Que faut-il retenir sur « ${t} » ?`, regle: t => `Que dit la règle sur « ${t} » ?`};
+var TERMQ = {def: "Quel mot correspond à cette définition ?", concept: "Quel concept est décrit ici ?", form: "De quelle formule s'agit-il ?",
+  date: "Quand cela s'est-il passé ?", info: "De quoi parle cette idée ?", regle: "De quelle règle s'agit-il ?"};
+
+/* ---------- Ce qu'on sait d'une notion : son terme, son contenu, son type, son chapitre ---------- */
+function chapOf(x) { return ((x && x.chap) || "").trim(); }
+function kindOf(n) { return n.kind || {def: "def", form: "form", date: "date", regle: "regle", ret: "info", cause: "info", q: "info"}[n.role] || "info"; }
+function factOf(n) {
+  if (!n || !n.text) return null;
+  if (n.term && n.def) return {term: n.term, def: n.def};
+  const d = defParts(n); if (d) return d;
+  const t = n.text.trim(); let m = t.match(/^(?:on appelle|on nomme)\s+(.{2,50}?)\s+(l['’]|le |la |les |un |une |ce |cette |celui |celle )(.{6,})$/i);
+  if (m) return {term: m[1].replace(/^(l['’]|le |la |les )/i, ""), def: (m[2] + m[3]).replace(/[.;!]+$/, "")};
+  m = t.match(/^([^:]{2,60}?)\s*:\s+(.{6,})$/);
+  if (m && /^(à retenir|retenir|attention|important|remarque|exemple|note|nb|rappel|définition|conclusion)$/i.test(m[1].trim())) return null;
+  if (m && m[1].trim().split(/\s+/).length <= 6) return {term: m[1].trim().replace(/^(l['’]|le |la |les )/i, ""), def: m[2].replace(/[.;!]+$/, "")};
+  return null;
+}
+var RX_Y = /(?:\b(?:en|depuis|dès|vers|année|an)|janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(1[0-9]{3}|20[0-9]{2})\b/i;
+function yearOf(n) {
+  if (!n || !n.text) return ""; const m = n.text.match(RX_Y); if (m) return m[1];
+  if (kindOf(n) === "date") { const z = n.text.match(/\b(1[0-9]{3}|20[0-9]{2})\b/); return z ? z[1] : ""; } return "";
+}
+function dateVariants(s) {
+  const m = String(s).match(/\b(1[0-9]{3}|20[0-9]{2})\b/); if (!m) return []; const y = Number(m[1]), top = new Date().getFullYear() + 1;
+  return [1, -1, 2, -2, 5, -5, 10, -10, 3].map(d => y + d).filter(v => v <= top).map(v => String(s).replace(m[1], String(v)));
+}
+function meta(x) { return {mat: matOf(x), chap: chapOf(x), kind: x.q !== undefined ? "exo" : x.front !== undefined ? "carte" : kindOf(x)}; }
+function maskIn(text, word) { if (!text || !word || word.length < 3) return text; const w = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); return text.replace(new RegExp(w, "gi"), "____"); }
+function hasWord(text, w) { return (" " + nk(text) + " ").includes(" " + nk(w) + " "); }
+function cardA(c) { return (c.back || "").split("\n")[0].trim(); }
+/* Un exemple doit aller avec la notion dont il parle. À l'import, il était rattaché à la phrase d'avant :
+   s'il cite le nom d'une autre notion, on le déplace vers elle. */
+function fixExamples(ns) {
+  const facts = ns.map(n => [n, factOf(n)]).filter(z => z[1]);
+  ns.forEach(n => { if (!n.ex) return; const f = factOf(n); if (f && hasWord(n.ex, f.term)) return;
+    const hit = facts.find(([y, g]) => y !== n && matOf(y) === matOf(n) && g.term.length >= 3 && hasWord(n.ex, g.term));
+    if (hit) { if (!hit[0].ex) hit[0].ex = n.ex; delete n.ex; } });
+}
+function chN(m) { return new Set(db.notions.filter(n => matOf(n) === m).map(chapOf).filter(Boolean)).size; }
+
+/* ---------- Les mauvaises réponses : crédibles, tirées du même cours ----------
+   On préfère : la même matière, le même chapitre, le même type de notion, une longueur proche.
+   On écarte : une réponse identique, une réponse contenue dans la bonne, un mot qui apparaît déjà dans la question.
+   Facile : des choix plus faciles à distinguer. Difficile : les plus proches de la bonne réponse. */
+function nk(a) { return norm(String(a)).replace(/^(un|une|le|la|les|des|du|de)\s+|^(l|d)['’]/, "").replace(/[^a-z0-9]+/g, " ").trim(); }
+var KG = {def: "d", concept: "d", info: "r", regle: "r", form: "f", date: "t", exo: "e", carte: "c"};
+function pickD(x, good, list, k, avoid) {
+  const g = nk(good), seen = new Set([g]), L = String(good).length, mx = meta(x), av = avoid ? nk(avoid) : "", gx = KG[mx.kind] || "d";
+  const ok = list.filter(c => { const a = nk(c.a || ""), gc = KG[c.kind] || "d"; if (!a || seen.has(a)) return false;
+    if ((gx === "t" || gx === "f") && gc !== gx) return false; if (gx !== "t" && gc === "t") return false; if (gx !== "f" && gc === "f") return false;
+    if (a.length > 3 && (g.includes(a) || a.includes(g))) return false; if (av && a.length > 3 && av.includes(a)) return false; seen.add(a); return true; });
+  ok.forEach(c => { c.s = (KG[c.kind] === gx ? 3 : 0) + (c.mat === mx.mat ? 4 : 0) + (mx.chap && c.chap === mx.chap ? 2.5 : 0) + (c.kind && c.kind === mx.kind ? 1.5 : 0)
+    - Math.abs(Math.log((String(c.a).length + 6) / (L + 6))) * 2.5 + Math.random() * 0.8; });
+  ok.sort((a, b) => b.s - a.s);
+  if (db.niv === 1) return shuffle(ok.slice(0, Math.max(k * 3, 6))).slice(0, k);
+  if (db.niv === 2) return shuffle(ok.slice(0, k + 2)).slice(0, k);
+  return ok.slice(0, k);
+}
+function dedupeOpts(good, opts) { const seen = new Set([nk(good)]); return opts.filter(o => { const a = nk(o.a || ""); if (!a || seen.has(a)) return false; seen.add(a); return true; }); }
+var NEG = [[/\bne peut pas\b/i, "peut"], [/\bne doit pas\b/i, "doit"], [/\bdoit\b/i, "ne doit pas"], [/\bdoivent\b/i, "ne doivent pas"], [/\bpeut\b/i, "ne peut pas"],
+  [/\btoujours\b/i, "jamais"], [/\bobligatoire\b/i, "facultatif"], [/\binterdit\b/i, "autorisé"], [/\baugmente\b/i, "diminue"], [/\bdiminue\b/i, "augmente"]];
+function negate(t) { for (const [r, s] of NEG) if (r.test(t)) return t.replace(r, s); return ""; }
+function fixElision(s) { return s.replace(/\b([lLdD])['’](?=[bcdfgjklmnpqrstvwxzBCDFGJKLMNPQRSTVWXZ])/g, (m, a) => ({l: "le ", L: "Le ", d: "de ", D: "De "})[a]); }
+
+/* ---------- Les formes de questions ----------
+   def    : « Que signifie X ? » → la définition (vérifie qu'on sait ce que veut dire le mot)
+   term   : la définition → quel mot ? (le sens inverse)
+   ex     : un exemple du cours → quelle notion il illustre ? (vérifie la compréhension, pas le par cœur)
+   pairs  : 3 ou 4 affirmations « mot : définition », une seule juste (vérifie qu'on ne confond pas)
+   date   : quelle date manque ?
+   affirm : la phrase du cours, et des versions fausses (mot échangé, sens inversé)
+   exo    : les exercices écrits par l'élève
+   carte  : les cartes de l'élève */
+function qPlan(x) {
+  if (x.q !== undefined && x.a !== undefined) return ["exo"]; if (x.front !== undefined) return ["carte"];
+  const t = [], f = factOf(x);
+  if (f) t.push("def", "term", "pairs"); if (x.ex) t.push("ex"); if (yearOf(x)) t.push("date"); if (!f && x.holes && x.holes.length && answerOf(x)) t.push("affirm");
+  return t;
+}
+var PREF = {1: ["term", "def", "date", "exo", "carte", "ex", "affirm", "pairs"], 2: ["def", "ex", "term", "exo", "carte", "date", "pairs", "affirm"], 3: ["ex", "pairs", "affirm", "def", "exo", "carte", "term", "date"]};
+function makeQ(x, t, k) {
+  const q = {t, x, quote: "", tag: "", text: "", good: "", opts: []};
+  if (t === "exo") {
+    const user = (x.wrong || []).filter(Boolean).map(a => ({a, user: true}));
+    const more = pickD(x, x.a, db.exos.filter(e => e !== x).map(e => ({a: e.a, from: e, ...meta(e)})), k);
+    q.tag = "Exercice"; q.text = x.q; q.good = x.a; q.opts = dedupeOpts(x.a, user.concat(more)).slice(0, Math.max(k, user.length));
+  } else if (t === "carte") {
+    const ga = cardA(x); if (!ga || ga.length > 160) return null;
+    q.tag = "Ma carte"; q.text = x.front; q.good = ga;
+    q.opts = pickD(x, ga, db.cards.filter(c => c !== x && !c.nid && !c.eid && cardA(c) && cardA(c).length <= 160).map(c => ({a: cardA(c), from: c, ...meta(c)})), k);
+  } else {
+    const n = x, f = factOf(n), kd = kindOf(n);
+    const facts = db.notions.filter(y => y !== n).map(y => [y, factOf(y)]).filter(z => z[1]);
+    const termC = () => facts.map(([y, g]) => ({a: g.term, from: y, ...meta(y)}))
+      .concat(db.notions.filter(y => y !== n && !factOf(y) && answerOf(y)).map(y => ({a: answerOf(y), from: y, ...meta(y)})));
+    if (t === "def") { if (!f) return null; q.tag = KLAB[kd] || "Définition"; q.text = (DEFQ[kd] || DEFQ.def)(f.term); q.good = f.def;
+      q.opts = pickD(n, f.def, facts.filter(([y, g]) => nk(g.term) !== nk(f.term)).map(([y, g]) => ({a: g.def, from: y, ...meta(y)})).filter(o => !norm(o.a).includes(norm(f.term))), k); }
+    else if (t === "term") { if (!f) return null; q.tag = KLAB[kd] || "Définition"; q.text = TERMQ[kd] || TERMQ.def; q.quote = maskIn(f.def, f.term); q.good = f.term;
+      let c = termC(); if (kd === "date") c = c.concat(dateVariants(f.term).map(a => ({a, ...meta(n)})));
+      q.opts = pickD(n, f.term, c, k, f.def); }
+    else if (t === "ex") { if (!n.ex) return null; const good = f ? f.term : answerOf(n); if (!good) return null;
+      if (facts.some(([y, g]) => matOf(y) === matOf(n) && nk(g.term) !== nk(good) && g.term.length >= 3 && hasWord(n.ex, g.term))) return null;
+      q.tag = "Exemple"; q.text = "Quelle notion cet exemple illustre-t-il ?"; q.quote = maskIn(n.ex, good); q.good = good; q.opts = pickD(n, good, termC(), k); }
+    else if (t === "pairs") { if (!f) return null;
+      const near = pickD(n, f.term, facts.map(([y, g]) => ({a: g.term, from: y, g, ...meta(y)})), Math.max(2, k));
+      if (near.length < 2) return null; const defs = [f.def, ...near.map(o => o.g.def)];
+      q.tag = "Vrai ou faux"; q.text = "Laquelle de ces affirmations est juste ?"; q.good = `${f.term} : ${f.def}`;
+      q.opts = near.map((o, j) => ({a: `${o.a} : ${defs[(j + 2) % defs.length]}`, from: o.from, real: `« ${o.a} », c'est : ${o.g.def}`})); }
+    else if (t === "date") { const y = yearOf(n); if (!y) return null;
+      q.tag = "Date"; q.text = "Quelle date manque ?"; q.quote = n.text.replace(y, "____"); q.good = y;
+      const ys = db.notions.filter(z => z !== n && matOf(z) === matOf(n)).map(yearOf).filter(Boolean);
+      q.opts = pickD(n, y, ys.map(a => ({a, ...meta(n)})).concat(dateVariants(y).map(a => ({a, ...meta(n)}))), k); }
+    else if (t === "affirm") { const ans = answerOf(n); if (!n.holes.length || !ans || f) return null;
+      q.tag = "Vrai ou faux"; q.text = "Laquelle de ces phrases est juste ?"; q.good = n.text;
+      const neg = negate(n.text), isTerm = facts.some(([y, g]) => nk(g.term) === nk(ans));
+      const sw = isTerm ? pickD(n, ans, facts.map(([y, g]) => ({a: g.term, from: y, ...meta(y), kind: "info"})), k).map(o => ({a: fixElision(swapHoles(n, o.a)), from: o.from})) : [];
+      q.opts = (neg ? [{a: neg, neg: true}] : []).concat(sw).slice(0, k); }
+  }
+  q.opts = dedupeOpts(q.good, q.opts);
+  return q.opts.length >= 2 ? q : null;
+}
+/* Construire un quiz : toutes les notions sont couvertes à tour de rôle (un chapitre après l'autre),
+   d'abord celles jamais vues en quiz, puis celles ratées, puis les plus anciennes. Les formes de questions changent. */
+function cqBuild(items, nb) {
+  const k = db.niv === 1 ? 2 : db.niv === 3 ? 4 : 3;
+  const pr = x => { const z = x.qz || {n: 0, ok: 0, last: 0}; return (z.n === 0 ? 0 : 2e13) + (z.n > z.ok ? 0 : 1e13) + z.last + Math.random() * 1e5; };
+  const by = new Map(); items.slice().sort((a, b) => pr(a) - pr(b)).forEach(x => { const c = chapOf(x); if (!by.has(c)) by.set(c, []); by.get(c).push(x); });
+  const cols = [...by.values()], order = []; for (let i = 0; order.length < items.length; i++) cols.forEach(c => { if (c[i]) order.push(c[i]); });
+  const out = [], cnt = {}; let last = "";
+  for (const x of order) { if (out.length >= nb) break;
+    const sc = t => (cnt[t] || 0) * 2 + PREF[db.niv].indexOf(t) * 0.5 + (t === last ? 5 : 0) + Math.random() * 0.3;
+    for (const t of qPlan(x).sort((a, b) => sc(a) - sc(b))) { const q = makeQ(x, t, k); if (q) { out.push(q); cnt[t] = (cnt[t] || 0) + 1; last = t; break; } } }
+  return out;
+}
+
+/* ---------- Le Quiz : une carte qui se retourne ---------- */
+var cq = null;
+function cqItems(m, ch) { return [...db.notions.filter(n => !n.off), ...db.exos, ...db.cards.filter(c => !c.nid && !c.eid)].filter(x => (!m || matOf(x) === m) && (!ch || chapOf(x) === ch)); }
+function cqStart(items) {
+  const list = cqBuild(items || cqItems($("jx-mat").value, $("jx-chap").value), 10);
+  if (!list.length) { note("Pas assez de matière pour un quiz. Ajoute des notions avec leur définition, des exercices ou des cartes (« Mes cours » → « Créer à la main »).", "warn"); return; }
+  if (list.length < 3) note("Petit quiz : ajoute des notions ou des exercices pour avoir plus de questions.", "warn");
+  cq = {list, i: 0, ok: 0, miss: []}; $("jx-end").hidden = true; $("mt").hidden = true; $("qc").hidden = false; cqShow();
+}
+function flipTo(id, back) {
+  const f = $(id), fr = f.querySelector(".front"), bk = f.querySelector(".back"); f.classList.toggle("turned", back);
+  fr.inert = back; bk.inert = !back; fr.setAttribute("aria-hidden", back); bk.setAttribute("aria-hidden", !back);
+}
+function cqShow() {
+  const q = cq.list[cq.i]; cq.answered = false; flipTo("qc-flip", false); $("qc-turn").hidden = true;
+  $("qc-pos").textContent = `Question ${cq.i + 1} sur ${cq.list.length}`; $("qc-score").textContent = `${cq.ok} juste${cq.ok > 1 ? "s" : ""}`;
+  $("qc-prog").style.width = Math.round(cq.i / cq.list.length * 100) + "%";
+  const tg = $("qc-tag"); tg.replaceChildren(el("span", "chip q", q.tag), document.createTextNode([matOf(q.x), chapOf(q.x)].filter(Boolean).join(" · ")));
+  $("qc-q").textContent = q.text; $("qc-quote").hidden = !q.quote; $("qc-quote").textContent = q.quote ? "« " + q.quote + " »" : "";
+  q.choices = shuffle([{a: q.good, good: true}, ...q.opts]);
+  const box = $("qc-c"); box.replaceChildren();
+  q.choices.forEach((c, i) => { const b = el("button"); b.append(el("span", "lt", "ABCDE"[i]), el("span", "", c.a)); b.setAttribute("aria-label", "Réponse " + "ABCDE"[i] + " : " + c.a);
+    b.addEventListener("click", () => cqAnswer(i)); box.append(b); });
+  box.firstChild.focus();
+}
+function cqAnswer(i) {
+  if (cq.answered) return; cq.answered = true; const q = cq.list[cq.i], c = q.choices[i], good = !!c.good, x = q.x, now = Date.now();
+  [...$("qc-c").children].forEach((b, j) => { b.disabled = true; if (q.choices[j].good) b.classList.add("ok"); else if (j === i) b.classList.add("no"); });
+  if (good) cq.ok++; else if (!cq.miss.includes(x)) cq.miss.push(x);
+  x.qz = x.qz || {n: 0, ok: 0, last: 0}; x.qz.n++; if (good) x.qz.ok++; x.qz.last = now;
+  if (x.text && x.holes && (!x.last || x.due <= now)) { if (!x.last) db.newToday++; schedule(x, good ? "h" : 1, now); }
+  save(); if (onceToday("cq" + (x.id || q.text))) gainN(1, "quiz");
+  cqBack(q, c, good); $("qc-turn").hidden = false;
+  setTimeout(() => { flipTo("qc-flip", true); $("qc-next").focus(); }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 350);
+}
+function cqBack(q, c, good) {
+  const bk = $("qc-back"), x = q.x; bk.classList.toggle("ok", good); bk.classList.toggle("no", !good);
+  $("qc-verdict").textContent = good ? "✓ Bonne réponse !" : "✗ Ce n'est pas ça";
+  const line = (lab, txt, cls) => { const d = el("div", "ansline " + cls); d.append(el("small", "", lab), el("b", "", txt)); return d; };
+  const box = $("qc-ans"); box.replaceChildren(); if (!good) box.append(line("Ta réponse", c.a, "mine")); box.append(line("La bonne réponse", q.good, "good"));
+  const w = $("qc-why"); w.replaceChildren(el("b", "", "Pourquoi ?")); const p = t => w.append(el("div", "", t));
+  if (x.text) {
+    const f = factOf(x);
+    if (x.why) p(x.why);
+    if (q.t === "ex") p(`Cet exemple montre « ${q.good} »` + (f ? ` : ${f.def}.` : "."));
+    else if (q.t === "pairs" || q.t === "term") p(`« ${f.term} », c'est : ${f.def}.`);
+    if (!good && c.neg) p("Attention au sens : la phrase que tu as choisie dit le contraire du cours.");
+    else if (!good && c.real) p("Dans ta réponse, les idées sont mélangées. En réalité, " + c.real + ".");
+    else if (!good && c.from && c.from.text) { const fo = factOf(c.from); p(fo ? `Ce que tu as choisi, c'est autre chose : « ${fo.term} », c'est ${fo.def}.` : `Ce que tu as choisi vient d'une autre phrase du cours : « ${c.from.text} »`); }
+    const src = el("div", "muted"); src.append("Dans ton cours : "); if (x.holes && x.holes.length) src.append(holeHTML(x, true)); else src.append(x.text); w.append(src);
+    if (x.ex && q.t !== "ex") p("Exemple : " + x.ex);
+  } else if (x.q !== undefined) { if (x.why) p(x.why); else p("Relis l'énoncé, puis compare ta réponse avec la bonne."); if (!good && c.user) p("C'est un piège que tu avais prévu toi-même : bien vu de l'avoir écrit, reste attentif."); }
+  else { if (x.back !== q.good) p(x.back); if (!good && c.from && c.from.front) p(`Ce que tu as choisi répond à une autre carte : « ${c.from.front} »`); }
+  const s = [matOf(x), chapOf(x)].filter(Boolean).join(" · "); if (s) w.append(el("div", "src", s));
+  $("qc-next").textContent = cq.i + 1 < cq.list.length ? "Question suivante →" : "Voir mon score";
+}
+function cqEnd() {
+  $("qc").hidden = true; $("jx-end").hidden = false; const n = cq.list.length;
+  $("jx-end-t").textContent = `${cq.ok} sur ${n}`;
+  $("jx-end-s").textContent = cq.ok === n ? "Parfait ! Tout est juste." : "Les notions ratées reviennent plus tôt dans ta révision. Tu peux aussi les revoir tout de suite.";
+  const l = $("jx-end-l"); l.replaceChildren(); cq.miss.forEach(x => { const r = el("div", "res no"); if (x.holes) r.append("✗ ", holeHTML(x, true)); else r.append("✗ " + (x.q || x.front) + " → " + (x.a || x.back)); l.append(r); });
+  $("jx-miss").hidden = !cq.miss.length; $("jx-miss").textContent = `Revoir mes erreurs (${cq.miss.length})`;
+  if (onceToday("jeu-quiz")) gainN(5, "quiz"); renderToday();
+}
+$("qc-next").addEventListener("click", () => { cq.i++; if (cq.i < cq.list.length) cqShow(); else cqEnd(); });
+$("qc-again").addEventListener("click", () => { flipTo("qc-flip", false); $("qc-turn").focus(); });
+$("qc-turn").addEventListener("click", () => { flipTo("qc-flip", true); $("qc-next").focus(); });
+$("qc-quit").addEventListener("click", () => { if (cq) cqEnd(); });
+$("qc-lire").addEventListener("click", () => { const q = cq && cq.list[cq.i]; if (q) speak(q.text + (q.quote ? ". " + q.quote : "") + ". " + q.choices.map((c, i) => "Réponse " + "ABCDE"[i] + " : " + c.a).join(". ")); });
+$("qc-lire2").addEventListener("click", () => speak($("qc-verdict").textContent.replace(/[✓✗]/g, "") + ". " + $("qc-ans").textContent + ". " + $("qc-why").textContent));
+$("jx-miss").addEventListener("click", () => { if (cq && cq.miss.length) cqStart(cq.miss.slice()); });
+$("jx-mat").addEventListener("change", () => fillChapSel($("jx-chap"), $("jx-mat").value));
+document.addEventListener("keydown", e => {
+  if ($("tab-jeux").hidden || $("qc").hidden || !cq || cq.answered || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+  const i = Number(e.key) - 1; if (i >= 0 && i < cq.list[cq.i].choices.length) { e.preventDefault(); cqAnswer(i); }
+});
+
+/* ---------- Questions à trous : leur propre écran ---------- */
+function trFin(t, sub) {
+  $("qz").hidden = true; $("tr-end").hidden = false; $("tr-end-t").textContent = t; $("tr-end-s").textContent = sub;
+  if (onceToday("jeu-trous")) gainN(5, "trous"); renderToday();
+}
+$("tr-go").addEventListener("click", quizStart); $("tr-again").addEventListener("click", quizStart);
+
+/* ---------- Les listes de matières et de chapitres ---------- */
+function chapsOf(m) { return [...new Set([...db.notions, ...db.exos, ...db.cards].filter(x => !m || matOf(x) === m).map(chapOf).filter(Boolean))].sort(); }
+function fillChapSel(sel, m) { const cur = sel.value; sel.replaceChildren(new Option("Tous les chapitres", "")); chapsOf(m).forEach(c => sel.append(new Option(c, c))); if ([...sel.options].some(o => o.value === cur)) sel.value = cur; }
+function fillDL() {
+  const a = $("mat-list"), b = $("chap-list"); a.replaceChildren(); b.replaceChildren();
+  matsWithNotions().forEach(m => a.append(new Option(m))); chapsOf("").forEach(c => b.append(new Option(c)));
+}
+
+/* ---------- Une notion écrite à la main ---------- */
+function termHoles(text, term) { const t = tokens(text), nw = term.trim().split(/\s+/).length, h = []; for (let i = 0, c = 0; i < t.length && c < nw; i++) if (!/^\s*$/.test(t[i])) { h.push(i); c++; } return h; }
+function manualNotion(o) {
+  const text = `${o.term} : ${o.def}`, n = makeNotion(text, "manuel", o.mat + " · " + new Date().toLocaleDateString("fr-FR"));
+  Object.assign(n, {mat: o.mat, chap: o.chap || "", term: o.term, def: o.def, kind: o.kind, holes: termHoles(text, o.term)});
+  if (o.ex) n.ex = o.ex; if (o.why) n.why = o.why; return n;
+}
+function newCard(o) { return Object.assign({id: uid(), front: "", back: "", mat: "", chap: "", created: Date.now(), D: 5, S: 0, due: 0, last: 0, reps: 0, lapses: 0, mark: "manuel"}, o); }
+function notionCard(n) {
+  const f = factOf(n), kd = kindOf(n); let front, back;
+  if (f) { front = (DEFQ[kd] || DEFQ.def)(f.term); back = f.def; }
+  else { front = tokens(n.text).map((w, i) => n.holes.includes(i) ? "____" : w).join(""); back = answerOf(n) + "\n" + n.text; }
+  if (n.ex) back += "\nExemple : " + n.ex; if (n.why) back += "\n" + n.why;
+  return newCard({nid: n.id, front, back, mat: matOf(n), chap: chapOf(n)});
+}
+
+/* ---------- Mes cours : créer à la main ---------- */
+let manKind = "def", exoEdit = null;
+function setManKind(k) {
+  manKind = k; document.querySelectorAll("#man-kind button").forEach(b => b.classList.toggle("on", b.dataset.k === k));
+  $("man-term-l").textContent = KFIELDS[k][0]; $("man-def-l").textContent = KFIELDS[k][1];
+}
+document.querySelectorAll("#man-kind button").forEach(b => b.addEventListener("click", () => setManKind(b.dataset.k)));
+setManKind("def");
+const manMat = () => $("man-mat").value.trim() || "Mes cours";
+function manDone(t) { $("man-done").textContent = t; }
+$("man-open").addEventListener("click", () => { fillDL(); $("man-card").hidden = false; $("man-card").scrollIntoView({block: "start", behavior: "smooth"}); $("man-mat").focus(); renderExos(); });
+$("man-close").addEventListener("click", () => { $("man-card").hidden = true; renderFolders(); });
+$("man-mat").addEventListener("change", renderExos);
+$("man-add").addEventListener("click", () => {
+  const term = $("man-term").value.trim(), def = $("man-def").value.trim();
+  if (!term || def.split(/\s+/).length < 2) { note("Écris « " + KFIELDS[manKind][0].toLowerCase() + " » et « " + KFIELDS[manKind][1].toLowerCase() + " » (au moins 2 mots).", "warn"); (term ? $("man-def") : $("man-term")).focus(); return; }
+  const n = manualNotion({term, def, kind: manKind, ex: $("man-ex").value.trim(), why: $("man-why").value.trim(), mat: manMat(), chap: $("man-chap").value.trim()});
+  db.notions.push(n); let c = null; if ($("man-card-too").checked) { c = notionCard(n); db.cards.push(c); }
+  save(); renderToday(); fillDL(); ["man-term", "man-def", "man-ex", "man-why"].forEach(id => { $(id).value = ""; }); $("man-term").focus();
+  manDone(`« ${term} » est ajouté${c ? ", avec sa carte" : ""}. Il arrive dans ta révision du jour.`);
+  noteUndo(`Notion « ${term} » ajoutée.`, () => { db.notions = db.notions.filter(x => x !== n); if (c) db.cards = db.cards.filter(x => x !== c); save(); renderToday(); manDone(""); });
+});
+$("man-text-save").addEventListener("click", () => {
+  const t = $("man-text").value.trim(); if (t.split(/\s+/).length < 5) { note("Écris ou colle ton cours d'abord.", "warn"); return; }
+  saveCours(manMat(), t); const c = db.cours[db.cours.length - 1]; if (c && c.text === t) c.chap = $("man-chap").value.trim(); save();
+  manDone("Cours enregistré. Tu peux l'écouter dans « Lire et écouter ».");
+});
+var anaChap = "";
+$("man-text-ana").addEventListener("click", () => {
+  const t = $("man-text").value.trim(); if (t.split(/\s+/).length < 5) { note("Écris ou colle ton cours d'abord.", "warn"); return; }
+  anaChap = $("man-chap").value.trim(); $("imp-mat").value = manMat(); $("imp-text").value = t; impOpen = true; $("imp-card").hidden = false; $("imp-read").click();
+});
+function renderExos() {
+  const box = $("exo-list"), m = manMat(), list = db.exos.filter(e => matOf(e) === m); box.replaceChildren();
+  if (!list.length) return; box.append(el("p", "muted", `${list.length} exercice${list.length > 1 ? "s" : ""} en ${m} :`));
+  list.forEach(e => { const r = el("div", "crow"); r.append(el("p", "pre", e.q), el("p", "pre muted", "→ " + e.a + (e.wrong && e.wrong.length ? "\n✗ " + e.wrong.join(" · ") : "")));
+    const a = el("div", "row"), b1 = el("button", "", "Modifier"), b2 = el("button", "", "Supprimer");
+    b1.addEventListener("click", () => { exoEdit = e; $("exo-q").value = e.q; $("exo-a").value = e.a; $("exo-w").value = (e.wrong || []).join("\n"); $("exo-why").value = e.why || ""; $("man-chap").value = e.chap || ""; $("exo-add").textContent = "Enregistrer l'exercice"; $("exo-q").focus(); });
+    b2.addEventListener("click", () => { db.exos = db.exos.filter(x => x !== e); save(); renderExos(); noteUndo("Exercice supprimé.", () => { db.exos.push(e); save(); renderExos(); }); });
+    a.append(b1, b2); r.append(a); box.append(r); });
+}
+$("exo-add").addEventListener("click", () => {
+  const q = $("exo-q").value.trim(), a = $("exo-a").value.trim();
+  if (!q || !a) { note("Écris la question et la bonne réponse.", "warn"); (q ? $("exo-a") : $("exo-q")).focus(); return; }
+  const o = {q, a, wrong: $("exo-w").value.split("\n").map(s => s.trim()).filter(Boolean).slice(0, 6), why: $("exo-why").value.trim(), mat: manMat(), chap: $("man-chap").value.trim()};
+  if (exoEdit) Object.assign(exoEdit, o); else { const e = Object.assign({id: uid(), created: Date.now()}, o); db.exos.push(e); if ($("man-card-too").checked) db.cards.push(newCard({eid: e.id, front: q, back: a + (o.why ? "\n" + o.why : ""), mat: o.mat, chap: o.chap})); }
+  manDone(exoEdit ? "Exercice modifié." : "Exercice ajouté. Il sera dans tes quiz."); exoEdit = null; $("exo-add").textContent = "Ajouter l'exercice";
+  save(); fillDL(); ["exo-q", "exo-a", "exo-w", "exo-why"].forEach(id => { $(id).value = ""; }); $("exo-q").focus(); renderExos();
+});
+
+/* ---------- Modifier une notion : son type, son terme, son contenu, son exemple, son chapitre, et si on la travaille ---------- */
+let edKind = "def";
+function setEdKind(k) { edKind = k; document.querySelectorAll("#ed-kind button").forEach(b => b.classList.toggle("on", b.dataset.k === k)); }
+document.querySelectorAll("#ed-kind button").forEach(b => b.addEventListener("click", () => setEdKind(b.dataset.k)));
+function edFill(n) {
+  const f = factOf(n); setEdKind(kindOf(n)); $("ed-term").value = f ? f.term : ""; $("ed-def").value = f ? f.def : "";
+  $("ed-ex").value = n.ex || ""; $("ed-why").value = n.why || ""; $("ed-chap").value = chapOf(n); $("ed-on").checked = !n.off; fillDL();
+}
+function edApply(n) {
+  const f0 = factOf(n), term = $("ed-term").value.trim(), def = $("ed-def").value.trim();
+  n.kind = edKind; n.chap = $("ed-chap").value.trim(); n.off = !$("ed-on").checked;
+  const ex = $("ed-ex").value.trim(), why = $("ed-why").value.trim(); if (ex) n.ex = ex; else delete n.ex; if (why) n.why = why; else delete n.why;
+  if (term && def && (!f0 || term !== f0.term || def !== f0.def)) { n.text = `${term} : ${def}`; n.term = term; n.def = def; n.holes = termHoles(n.text, term); n._rebuilt = true; return true; }
+  if (term && def) { n.term = term; n.def = def; }
+  return false;
+}
+
+/* ---------- Mes cartes : recto, verso, rangées par chapitre, révisées avec le même algorithme ---------- */
+let caEdit = null, cr = null;
+const caSel = () => db.cards.filter(c => (!$("ca-mat").value || matOf(c) === $("ca-mat").value) && (!$("ca-chap").value || chapOf(c) === $("ca-chap").value));
+function caDue(list) { const end = new Date(); end.setHours(23, 59, 59, 999); return list.filter(c => !c.last || c.due <= end.getTime()); }
+function renderCartes() {
+  fillMats($("ca-mat")); fillChapSel($("ca-chap"), $("ca-mat").value); fillDL();
+  const list = caSel(), due = caDue(list), box = $("ca-list"); box.replaceChildren();
+  $("ca-n").textContent = list.length ? `${list.length} carte${list.length > 1 ? "s" : ""} · ${due.length} à revoir aujourd'hui` : "Pas encore de carte ici. Écris ta première carte, ou fais-les à partir de tes notions.";
+  $("ca-go").disabled = !due.length;
+  if (!list.length) return;
+  const by = new Map(); list.forEach(c => { const k = matOf(c) + (chapOf(c) ? " · " + chapOf(c) : ""); if (!by.has(k)) by.set(k, []); by.get(k).push(c); });
+  [...by.entries()].sort().forEach(([k, cs]) => { const d = el("details", "chap"); d.open = by.size <= 2; const s = document.createElement("summary");
+    s.append(el("b", "", k), el("span", "muted", cs.length + " carte" + (cs.length > 1 ? "s" : ""))); d.append(s);
+    cs.forEach(c => { const r = el("div", "crow"); r.append(el("p", "pre", c.front), el("p", "pre muted", c.back));
+      const a = el("div", "row"), b1 = el("button", "", "Modifier"), b2 = el("button", "", "Supprimer");
+      b1.addEventListener("click", () => caOpen(c)); b2.addEventListener("click", () => { db.cards = db.cards.filter(x => x !== c); save(); renderCartes(); noteUndo("Carte supprimée.", () => { db.cards.push(c); save(); renderCartes(); }); });
+      a.append(b1, b2); r.append(a); d.append(r); });
+    box.append(d); });
+}
+function caOpen(c, pre) {
+  caEdit = c || null; const o = c || pre || {}; $("ca-form").hidden = false; $("ca-form-t").textContent = c ? "Modifier la carte" : "Nouvelle carte";
+  $("ca-front").value = o.front || ""; $("ca-back").value = o.back || ""; $("ca-f-mat").value = o.mat || $("ca-mat").value || ""; $("ca-f-chap").value = o.chap || $("ca-chap").value || "";
+  $("ca-save").textContent = c ? "Enregistrer" : "Ajouter la carte"; $("ca-saved").textContent = "";
+  $("ca-form").scrollIntoView({block: "start", behavior: "smooth"}); (o.back && !o.front ? $("ca-front") : $("ca-front")).focus();
+}
+$("ca-new").addEventListener("click", () => caOpen(null));
+$("ca-cancel").addEventListener("click", () => { $("ca-form").hidden = true; caEdit = null; });
+$("ca-save").addEventListener("click", () => {
+  const front = $("ca-front").value.trim(), back = $("ca-back").value.trim();
+  if (!front || !back) { note("Écris le recto et le verso.", "warn"); (front ? $("ca-back") : $("ca-front")).focus(); return; }
+  const o = {front, back, mat: $("ca-f-mat").value.trim() || "Mes cartes", chap: $("ca-f-chap").value.trim()};
+  if (caEdit) { Object.assign(caEdit, o); $("ca-form").hidden = true; caEdit = null; note("Carte modifiée.", "ok"); }
+  else { db.cards.push(newCard(o)); $("ca-front").value = ""; $("ca-back").value = ""; $("ca-front").focus(); $("ca-saved").textContent = "Carte ajoutée. Tu peux en écrire une autre."; }
+  save(); renderCartes();
+});
+function caMake(list, what) {
+  if (!list.length) { note("Rien de nouveau : tout a déjà sa carte.", "ok"); return; }
+  db.cards.push(...list); save(); renderCartes();
+  noteUndo(`${list.length} carte${list.length > 1 ? "s" : ""} créée${list.length > 1 ? "s" : ""} depuis ${what}.`, () => { db.cards = db.cards.filter(c => !list.includes(c)); save(); renderCartes(); });
+}
+$("ca-from").addEventListener("click", () => { const m = $("ca-mat").value, ch = $("ca-chap").value;
+  caMake(db.notions.filter(n => !n.off && (!m || matOf(n) === m) && (!ch || chapOf(n) === ch) && !db.cards.some(c => c.nid === n.id)).map(notionCard), "tes notions"); });
+$("ca-from-exo").addEventListener("click", () => { const m = $("ca-mat").value, ch = $("ca-chap").value;
+  caMake(db.exos.filter(e => (!m || matOf(e) === m) && (!ch || chapOf(e) === ch) && !db.cards.some(c => c.eid === e.id)).map(e => newCard({eid: e.id, front: e.q, back: e.a + (e.why ? "\n" + e.why : ""), mat: matOf(e), chap: chapOf(e)})), "tes exercices"); });
+$("ca-mat").addEventListener("change", () => { fillChapSel($("ca-chap"), $("ca-mat").value); renderCartes(); });
+$("ca-chap").addEventListener("change", renderCartes);
+$("lec-carte").addEventListener("click", () => { const it = lec.sel; if (!it) return; lecStop(); tab("cartes"); caOpen(null, {front: "", back: it.text, mat: lec.c.mat, chap: lec.c.chap || ""}); });
+
+/* La révision des cartes : recto, on retourne, on dit si on s'en souvenait */
+function crStart() {
+  const due = interleave(caDue(caSel())).slice(0, DAY_MAX); if (!due.length) { note("Aucune carte à revoir aujourd'hui.", "ok"); return; }
+  cr = {list: due, i: 0, n: {1: 0, 2: 0, 3: 0}}; $("ca-run").hidden = false; $("ca-list-card").hidden = true; $("ca-form").hidden = true; $("ca-top").hidden = true; crShow();
+}
+function crShow() {
+  const c = cr.list[cr.i]; cr.turned = false; flipTo("cr-flip", false);
+  $("cr-pos").textContent = `Carte ${cr.i + 1} sur ${cr.list.length}`; $("cr-prog").style.width = Math.round(cr.i / cr.list.length * 100) + "%";
+  $("cr-src").textContent = [matOf(c), chapOf(c)].filter(Boolean).join(" · "); $("cr-front").textContent = c.front; $("cr-back").textContent = c.back;
+  const now = Date.now(); $("cr-w2").textContent = when(preview(c, 2, now).due); $("cr-w3").textContent = when(preview(c, 3, now).due);
+  $("cr-turn").focus();
+}
+function crTurn() { cr.turned = true; flipTo("cr-flip", true); document.querySelector("#cr-b .g2").focus(); }
+function crGrade(g) {
+  if (!cr || !cr.turned) return; const c = cr.list[cr.i]; schedule(c, g, Date.now()); cr.n[g]++;
+  if (g === 1 && cr.list.filter(x => x === c).length < 3 && !cr.list.slice(cr.i + 1).includes(c)) cr.list.push(c);
+  save(); if (onceToday("ca" + c.id)) gain(2, "carte"); cr.i++;
+  if (cr.i >= cr.list.length) crEnd(); else crShow();
+}
+function crEnd() {
+  $("ca-run").hidden = true; $("ca-list-card").hidden = false; $("ca-top").hidden = false;
+  if (cr && cr.i) note(`Fini ! ${cr.n[3]} facile${cr.n[3] > 1 ? "s" : ""}, ${cr.n[2]} avec effort, ${cr.n[1]} raté${cr.n[1] > 1 ? "s" : ""}.`, "ok");
+  cr = null; renderCartes(); renderToday();
+}
+$("ca-go").addEventListener("click", crStart);
+$("cr-turn").addEventListener("click", crTurn);
+$("cr-unturn").addEventListener("click", () => { cr.turned = false; flipTo("cr-flip", false); $("cr-turn").focus(); });
+document.querySelectorAll("#cr-b [data-cg]").forEach(b => b.addEventListener("click", () => crGrade(Number(b.dataset.cg))));
+$("cr-quit").addEventListener("click", crEnd);
+$("cr-lire").addEventListener("click", () => { if (cr) speak(cr.list[cr.i].front); });
+$("cr-lire2").addEventListener("click", () => { if (cr) speak(cr.list[cr.i].back); });
+document.addEventListener("keydown", e => {
+  if (!cr || $("ca-run").hidden || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+  if (!cr.turned && (e.key === " " || e.key === "Enter")) { e.preventDefault(); crTurn(); }
+  else if (cr.turned && ["1", "2", "3"].includes(e.key)) { e.preventDefault(); crGrade(Number(e.key)); }
+});
+
+fixExamples(db.notions); save();
+Object.assign(SUBS, {jeux: "Choisis ta réponse : la carte se retourne et t'explique la correction.", trous: "Retrouve le mot caché de ton cours.",
+  cartes: "Tes cartes recto verso. Écris-les, puis révise-les.", notions: "Importe ton cours, ou écris-le toi-même."});
 
 /* ---------- Le bouton « retour » du navigateur marche, et la page ouverte est gardée ---------- */
 window.addEventListener("popstate", () => tab(TABS[location.hash.slice(1)] ? location.hash.slice(1) : "jour", true));
