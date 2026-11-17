@@ -511,3 +511,13 @@ button.primary .ic,label.btn .ic,button .ic{width:20px;height:20px}
 .pday.jj{background:var(--p-sun)}
 @media (max-width:900px){.pday{grid-template-columns:1fr}}
 .plan2 .stats{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+
+/* ---------- Version 1.7 : comprendre avec l'IA ---------- */
+.hero-soft{background:var(--accent-soft);border-color:transparent}
+.partie.lv2{margin-left:var(--space-6)}
+.partie .idee{margin:0 0 var(--space-3);color:var(--text-2)}
+.nia{border-top:1px solid var(--line);padding:var(--space-3) 0;display:flex;flex-direction:column;gap:4px}
+.nia.ess{box-shadow:inset 4px 0 0 var(--hl);padding-left:var(--space-3)}
+.nia .ex{background:var(--surface-2);border-radius:var(--radius-sm);padding:6px 10px;font-size:15px}
+.partie>.row{padding:var(--space-2) 0 var(--space-3)}
+@media (max-width:900px){.partie.lv2{margin-left:var(--space-3)}}

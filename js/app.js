@@ -1167,7 +1167,7 @@ let dc = {mode: "exp", turns: [], sys: ""};
 const dcKey = () => { try { return localStorage.getItem("notea-cle") || ""; } catch (e) { return ""; } };
 async function dcEngine() {
   let lm = "unavailable"; try { if (typeof LanguageModel !== "undefined") lm = await LanguageModel.availability({expectedInputs: [{type: "text", languages: ["fr"]}], expectedOutputs: [{type: "text", languages: ["fr"]}]}); } catch (e) {}
-  return lm !== "unavailable" ? "builtin" : dcKey() ? "api" : "copy";
+  return dcKey() ? "api" : lm !== "unavailable" ? "builtin" : "copy";   // avec une clé, on prend Claude
 }
 function bubble2(role, text) { const d = document.createElement("div"); d.className = "bub " + (role === "user" ? "moi" : "ia");
   const w = document.createElement("b"); w.className = "who"; w.textContent = role === "user" ? "Toi" : dc.mode === "enf" ? "Léo" : "Notéa"; const t = document.createElement("span"); t.textContent = text; d.append(w, t); $("dc-thread").append(d); $("dc-thread").scrollTop = 1e9; return t; }
@@ -1181,10 +1181,7 @@ async function dcAsk() {
       for await (const ch of sess.promptStreaming(dc.turns[dc.turns.length - 1].content, o)) { out = ch.startsWith(out) ? ch : out + ch; t.textContent = out; }
       dc.turns.push({role: "assistant", content: out});
     } else if (eng === "api") {
-      const r = await fetch("https://api.anthropic.com/v1/messages", {method: "POST", headers: {"content-type": "application/json", "x-api-key": dcKey(), "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true"},
-        body: JSON.stringify({model: MODEL, max_tokens: 400, system: dc.sys, messages: dc.turns})});
-      if (!r.ok) throw new Error("Erreur " + r.status);
-      const j = await r.json(), out = (j.content || []).map(c => c.text || "").join("").trim(); bubble2("assistant", out); dc.turns.push({role: "assistant", content: out});
+      const r = await iaCall({system: dc.sys, messages: dc.turns, maxTokens: 4000, effort: "low"}), out = r.text.trim(); bubble2("assistant", out); dc.turns.push({role: "assistant", content: out});
     } else {
       const text = dc.sys + "\n\n" + dc.turns.map(t => (t.role === "user" ? "Élève : " : "Toi : ") + t.content).join("\n\n");
       try { await navigator.clipboard.writeText(text); } catch (e) {}
@@ -1192,14 +1189,14 @@ async function dcAsk() {
       p.append("Pas d'IA sur cet appareil. ", a, " (la demande est copiée)."); $("dc-thread").append(p);
     }
     if (eng !== "copy" && onceToday("discu-" + dc.mode)) gain(5, "discussion");
-  } catch (e) { $("dc-status").textContent = "La réponse n'a pas pu venir : " + e.message; $("dc-send").disabled = false; return; }
+  } catch (e) { $("dc-status").textContent = "La réponse n'a pas pu venir : " + iaErreur(e); $("dc-send").disabled = false; return; }
   $("dc-status").textContent = ""; $("dc-send").disabled = false; $("dc-in").focus();
 }
 function dcStart() {
   const m = $("dc-mat").value, ns = db.notions.filter(n => !m || matOf(n) === m).slice(0, 25);
   if (!ns.length) { note("Ajoute d'abord un cours dans « Mes cours ».", "warn"); return; }
   dc.turns = []; dc.notions = ns; $("dc-thread").replaceChildren(); $("dc-chat").hidden = false; $("dc-hard").hidden = true;
-  dc.sys = DC_BASE + " " + DC_MODES[dc.mode][1] + "\n\nLes notions du cours" + (m ? " de " + m : "") + " :\n" + ns.map(n => "- " + n.text).join("\n") + moteurContexte(m);
+  dc.sys = DC_BASE + " " + DC_MODES[dc.mode][1] + "\n\nLes notions du cours" + (m ? " de " + m : "") + " :\n" + ns.map(n => "- " + n.text).join("\n") + iaContexte(m) + moteurContexte(m);
   const first = dc.mode === "enf" ? "Bonjour ! Je suis prêt à t'expliquer mon cours." : dc.mode === "qst" ? "Pose-moi la première question." : "Explique-moi la première notion.";
   dc.turns.push({role: "user", content: first}); bubble2("user", first); dcAsk(); useTool("discu");
 }
@@ -1242,7 +1239,7 @@ document.querySelectorAll("[data-print]").forEach(b => b.addEventListener("click
 const TABS = {
   jour: ["Accueil", "accueil"],
   planning: ["Agenda & planning", "agenda"], progres: ["Mes progrès", "agenda"], imprimer: ["Imprimer", "agenda"],
-  notions: ["Mes cours", "cours"], lecture: ["Lire et écouter", "cours"],
+  notions: ["Mes cours", "cours"], comprendre: ["Comprendre", "cours"], lecture: ["Lire et écouter", "cours"],
   notes: ["Mon carnet", "carnet"], cartes: ["Mes cartes", "carnet"], jeux: ["Quiz", "carnet"], trous: ["Questions à trous", "carnet"], blanche: ["Feuille blanche", "carnet"], carte: ["Carte mentale", "carnet"], examen: ["Examen blanc", "carnet"], carnet: ["Carnet de mots", "carnet"],
   discu: ["Prof particulier", "prof"],
   acces: ["Accessibilité", "reglages"], reglages: ["Paramètres", "reglages"]
@@ -1277,6 +1274,8 @@ function tab(name, fromNav) {
   if (name === "lecture") renderLecture();
   if (name === "carnet") renderCarnet();
   if (name === "progres") renderProgres();
+  if (name === "comprendre") renderComprendre();
+  if (name === "reglages") renderIAReglages();
   if (name === "discu") renderProf();
   if (name === "reglages") renderVac();
 }
@@ -1472,7 +1471,7 @@ function dcExplain(text, mat) {
   const ns = db.notions.filter(n => matOf(n) === mat).slice(0, 25);
   dc.turns = []; dc.notions = ns; $("dc-thread").replaceChildren(); $("dc-chat").hidden = false; $("dc-hard").hidden = true;
   dc.sys = DC_BASE + " L'élève ne comprend pas une phrase de son cours. Explique-la en 3 ou 4 phrases courtes, avec des mots simples et un exemple de la vie de tous les jours. Explique chaque mot difficile. Puis pose une seule question simple pour vérifier qu'il a compris."
-    + (ns.length ? "\n\nLes notions du cours de " + mat + " :\n" + ns.map(n => "- " + n.text).join("\n") : "") + moteurContexte(mat);
+    + (ns.length ? "\n\nLes notions du cours de " + mat + " :\n" + ns.map(n => "- " + n.text).join("\n") : "") + iaContexte(mat) + moteurContexte(mat);
   const first = "Je ne comprends pas cette phrase : « " + text + " »";
   dc.turns.push({role: "user", content: first}); bubble2("user", first); dcAsk(); useTool("discu");
 }
@@ -1567,7 +1566,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.6";
+const VERSION = "1.7";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -1901,6 +1900,7 @@ function fixElision(s) { return s.replace(/\b([lLdD])['’](?=[bcdfgjklmnpqrstvw
    exo    : les exercices écrits par l'élève
    carte  : les cartes de l'élève */
 function qPlan(x) {
+  if (x.iq) return ["ia"];
   if (x.mq) return ["moteur"];
   if (x.q !== undefined && x.a !== undefined) return ["exo"]; if (x.front !== undefined) return ["carte"];
   const t = [], f = factOf(x);
@@ -1909,6 +1909,7 @@ function qPlan(x) {
 }
 var PREF = {1: ["term", "def", "date", "exo", "carte", "ex", "affirm", "pairs"], 2: ["def", "ex", "term", "exo", "carte", "date", "pairs", "affirm"], 3: ["ex", "pairs", "affirm", "def", "exo", "carte", "term", "date"]};
 function makeQ(x, t, k) {
+  if (t === "ia") return makeIA(x, k);
   if (t === "moteur") return makeMQ(x, k);
   const q = {t, x, quote: "", tag: "", text: "", good: "", opts: []};
   if (t === "exo") {
@@ -1969,7 +1970,7 @@ function cqBuild(items, nb) {
 
 /* ---------- Le Quiz : une carte qui se retourne ---------- */
 var cq = null;
-function cqItems(m, ch) { return moteurItems(m, ch).concat([...db.notions.filter(n => !n.off), ...db.exos, ...db.cards.filter(c => !c.nid && !c.eid)].filter(x => (!m || matOf(x) === m) && (!ch || chapOf(x) === ch))); }
+function cqItemsBase(m, ch) { return moteurItems(m, ch).concat([...db.notions.filter(n => !n.off), ...db.exos, ...db.cards.filter(c => !c.nid && !c.eid)].filter(x => (!m || matOf(x) === m) && (!ch || chapOf(x) === ch))); }
 function cqStart(items) {
   const list = cqBuild(items || cqItems($("jx-mat").value, $("jx-chap").value), 10);
   if (!list.length) { note("Pas assez de matière pour un quiz. Ajoute des notions avec leur définition, des exercices ou des cartes (« Mes cours » → « Créer à la main »).", "warn"); return; }
@@ -2008,7 +2009,8 @@ function cqBack(q, c, good) {
   const line = (lab, txt, cls) => { const d = el("div", "ansline " + cls); d.append(el("small", "", lab), el("b", "", txt)); return d; };
   const box = $("qc-ans"); box.replaceChildren(); if (!good) box.append(line("Ta réponse", c.a, "mine")); box.append(line("La bonne réponse", q.good, "good"));
   const w = $("qc-why"); w.replaceChildren(el("b", "", "Pourquoi ?")); const p = t => w.append(el("div", "", t));
-  if (x.mq) moteurPourquoi(x, c, good, p);
+  if (x.iq) iaPourquoi(q, c, good, p);
+  else if (x.mq) moteurPourquoi(x, c, good, p);
   else if (x.text) {
     const f = factOf(x);
     if (x.why) p(x.why);
@@ -2028,7 +2030,7 @@ function cqEnd() {
   $("qc").hidden = true; $("jx-end").hidden = false; const n = cq.list.length;
   $("jx-end-t").textContent = `${cq.ok} sur ${n}`;
   $("jx-end-s").textContent = cq.ok === n ? "Parfait ! Tout est juste." : "Les notions ratées reviennent plus tôt dans ta révision. Tu peux aussi les revoir tout de suite.";
-  const l = $("jx-end-l"); l.replaceChildren(); cq.miss.forEach(x => { const r = el("div", "res no"); if (x.holes) r.append("✗ ", holeHTML(x, true)); else r.append("✗ " + (x.q || x.front || (x.mq && x.mq.enonce)) + " → " + (x.a || x.back || (x.mq && x.mq.reponseAttendue))); l.append(r); });
+  const l = $("jx-end-l"); l.replaceChildren(); cq.miss.forEach(x => { const r = el("div", "res no"); if (x.holes) r.append("✗ ", holeHTML(x, true)); else r.append("✗ " + (x.q || x.front || (x.mq && x.mq.enonce) || (x.iq && x.iq.question)) + " → " + (x.a || x.back || (x.mq && x.mq.reponseAttendue) || (x.iq && (x.iq.choix.find(c => c.juste) || {}).texte))); l.append(r); });
   $("jx-miss").hidden = !cq.miss.length; $("jx-miss").textContent = `Revoir mes erreurs (${cq.miss.length})`;
   if (onceToday("jeu-quiz")) gainN(5, "quiz"); renderToday();
 }
@@ -2053,7 +2055,7 @@ function trFin(t, sub) {
 $("tr-go").addEventListener("click", quizStart); $("tr-again").addEventListener("click", quizStart);
 
 /* ---------- Les listes de matières et de chapitres ---------- */
-function chapsOf(m) { return [...new Set([...db.notions, ...db.exos, ...db.cards].filter(x => !m || matOf(x) === m).map(chapOf).filter(Boolean))].sort(); }
+function chapsOf(m) { return [...new Set([...db.notions, ...db.exos, ...db.cards].filter(x => !m || matOf(x) === m).map(chapOf).concat(iaAnalyses(m).flatMap(a => (a.data.questions || []).map(q => q.partie))).filter(Boolean))].sort(); }
 function fillChapSel(sel, m) { const cur = sel.value; sel.replaceChildren(new Option("Tous les chapitres", "")); chapsOf(m).forEach(c => sel.append(new Option(c, c))); if ([...sel.options].some(o => o.value === cur)) sel.value = cur; }
 function fillDL() {
   const a = $("mat-list"), b = $("chap-list"); a.replaceChildren(); b.replaceChildren();
@@ -2285,7 +2287,7 @@ function makeMQ(x, k) {
   return q.opts.length >= 2 ? q : null;
 }
 function famKey(q) {
-  const t = q.t === "moteur" ? q.x.mq.type : q.t;
+  const t = q.t === "moteur" ? q.x.mq.type : q.t === "ia" ? "ia-" + q.x.iq.objectif + "-" + nk(q.x.iq.partie || "") : q.t;
   const f = {def: "D", qcm: "D", term: "T", directe: "T", "qcm-notion": "T", ex: "E", situation: "E"}[t] || t;
   return f + "|" + nk(q.good);
 }
@@ -2512,6 +2514,196 @@ function renderExamToday() {
     const v = el("button", "", "Mon plan"); v.addEventListener("click", () => { examOuvert = m; nMat = m; tab("notes"); }); a.append(v);
     r.append(l, a); box.append(r); });
 }
+
+
+/* =====================================================================
+   Version 1.7 : l'IA comprend le cours (clé Claude de l'élève).
+   Un seul appel par cours, gardé sur l'appareil : le plan (grand I, A, B…), les notions expliquées simplement,
+   et des questions de compréhension qui se comprennent seules. Le quiz les utilise à la place des questions automatiques.
+   La clé reste sur l'appareil (localStorage) ; elle n'est envoyée qu'à Anthropic.
+   ===================================================================== */
+var IA_SDK = "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@1.4.0/+esm";
+var IA_MODELES = {"claude-opus-5-5": ["Claude Opus 5.5", "le plus intelligent", 4, 20], "claude-sonnet-5-5": ["Claude Sonnet 5.5", "très bon, 2 fois moins cher", 2, 10], "claude-haiku-5-5": ["Claude Haiku 5.5", "le moins cher, moins fin", 0.1, 0.5]};
+var iaMod = null;
+function iaModel() { const m = lsGet("notea-modele", "claude-opus-5-5"); return IA_MODELES[m] ? m : "claude-opus-5-5"; }
+async function iaClient() {
+  const key = dcKey(); if (!key) throw new Error("Ajoute d'abord ta clé dans Paramètres → L'IA de Notéa.");
+  if (!iaMod) iaMod = await import(IA_SDK);
+  return new iaMod.Anthropic({apiKey: key, dangerouslyAllowBrowser: true});   // la clé de l'élève, sur son appareil
+}
+function iaErreur(e) {
+  const M = iaMod || {};
+  if (M.AuthenticationError && e instanceof M.AuthenticationError) return "Ta clé est refusée. Vérifie-la dans Paramètres.";
+  if (M.PermissionDeniedError && e instanceof M.PermissionDeniedError) return "Ta clé n'a pas accès à ce modèle. Choisis-en un autre dans Paramètres.";
+  if (M.RateLimitError && e instanceof M.RateLimitError) return "Trop de demandes, ou plus de crédit sur ton compte. Réessaie dans une minute, ou vérifie ton crédit.";
+  if (M.APIConnectionError && e instanceof M.APIConnectionError) return "Pas de connexion à internet.";
+  return e && e.message ? e.message : "Erreur inconnue.";
+}
+/* Un appel. Opus et Sonnet : si un filtre de sécurité refuse à tort, un autre modèle reprend (replis côté serveur). */
+async function iaCall({system, messages, maxTokens, format, effort, onText}) {
+  const client = await iaClient(), model = iaModel();
+  const req = {model, max_tokens: maxTokens, system, messages, output_config: Object.assign({effort}, format ? {format} : {})};
+  if (model !== "claude-haiku-5-5") { req.betas = ["server-side-fallback-2026-07-01"]; req.fallbacks = "default"; }
+  const stream = client.beta.messages.stream(req);
+  if (onText) stream.on("text", onText);
+  const msg = await stream.finalMessage();
+  if (msg.stop_reason === "refusal") throw new Error("L'IA a refusé cette demande. Essaie avec un autre modèle.");
+  if (msg.stop_reason === "max_tokens") throw new Error("Le cours est trop long pour une seule analyse. Coupe-le en deux cours.");
+  return {text: msg.content.filter(b => b.type === "text").map(b => b.text).join(""), usage: msg.usage, model: msg.model};
+}
+function iaPrix(model, inTok, outTok) { const p = IA_MODELES[model]; return (inTok * p[2] + outTok * p[3]) / 1e6; }
+const fmtPrix = d => d < 0.01 ? "moins d'1 centime" : d < 1 ? "environ " + Math.max(1, Math.round(d * 100)) + " centimes" : "environ " + d.toFixed(2).replace(".", ",") + " $";
+
+/* ---------- La consigne donnée à l'IA ---------- */
+var IA_SYSTEME = `Tu aides un étudiant du supérieur qui est dys ou TDAH à comprendre et réviser son cours.
+Ses notes peuvent être très abrégées, en vrac, avec des mots-clés, des flèches ou des fautes. Ton travail : comprendre ce que le cours enseigne vraiment, puis le rendre clair.
+
+1. Le plan. Retrouve la structure logique du cours : les grandes parties (I, II…) et leurs sous-parties (A, B…). Garde les titres du cours quand il y en a ; sinon, donne des titres clairs. Pour chaque partie, dis en une phrase de quoi elle parle et à quoi elle sert.
+2. Les notions. Pour chaque notion importante : une définition simple avec des mots de tous les jours (25 mots au plus), une explication (pourquoi c'est important, comment ça marche, 1 ou 2 phrases), un exemple concret. Prends l'exemple du cours s'il y en a un ; sinon, invente un exemple simple et mets ajout_hors_notes à true. N'invente aucun fait : si tu complètes une note trop abrégée avec une connaissance générale sûre de la matière, mets ajout_hors_notes à true.
+3. Les questions de quiz (2 à 4 par partie, 30 au plus). Elles vérifient que l'étudiant a COMPRIS, pas qu'il reconnaît un mot recopié.
+   - Chaque question se comprend seule, sans voir les notes : une phrase complète qui pose le contexte (par exemple « Dans une étude de marché, à quoi sert… »). Jamais de fragment de notes recopié, jamais de liste de mots-clés.
+   - Varie : pourquoi, comment, que faire dans telle situation, quelle différence entre deux notions, quel exemple illustre une notion. Peu de questions de définition pure.
+   - 4 choix courts et de même longueur, un seul juste. Les mauvais choix sont crédibles : des confusions qu'un étudiant ferait vraiment.
+   - Pour chaque choix, « pourquoi » explique en une phrase pourquoi il est juste ou faux.
+   - « explication » redit l'idée à retenir, simplement, en 1 à 3 phrases.
+Écris en français simple, phrases courtes, une idée par phrase. Le champ « partie » reprend exactement le titre d'une partie ou sous-partie du plan.`;
+var IA_SCHEMA = {type: "object", additionalProperties: false, required: ["titre", "resume", "plan", "notions", "questions"], properties: {
+  titre: {type: "string"}, resume: {type: "string"},
+  plan: {type: "array", items: {type: "object", additionalProperties: false, required: ["titre", "idee", "sous_parties"], properties: {
+    titre: {type: "string"}, idee: {type: "string"},
+    sous_parties: {type: "array", items: {type: "object", additionalProperties: false, required: ["titre", "idee"], properties: {titre: {type: "string"}, idee: {type: "string"}}}}}}},
+  notions: {type: "array", items: {type: "object", additionalProperties: false, required: ["terme", "partie", "type", "importance", "definition", "explication", "exemple", "ajout_hors_notes"], properties: {
+    terme: {type: "string"}, partie: {type: "string"}, type: {type: "string", enum: ["definition", "concept", "methode", "formule", "date", "acteur", "regle", "a_retenir"]},
+    importance: {type: "string", enum: ["essentielle", "importante", "detail"]}, definition: {type: "string"}, explication: {type: "string"}, exemple: {type: "string"}, ajout_hors_notes: {type: "boolean"}}}},
+  questions: {type: "array", items: {type: "object", additionalProperties: false, required: ["partie", "notion", "objectif", "question", "choix", "explication"], properties: {
+    partie: {type: "string"}, notion: {type: "string"}, objectif: {type: "string", enum: ["comprendre", "appliquer", "distinguer", "retenir"]}, question: {type: "string"},
+    choix: {type: "array", items: {type: "object", additionalProperties: false, required: ["texte", "juste", "pourquoi"], properties: {texte: {type: "string"}, juste: {type: "boolean"}, pourquoi: {type: "string"}}}},
+    explication: {type: "string"}}}}}};
+
+/* ---------- Les sources : les cours gardés, ou les notions d'une matière ---------- */
+db.ia = db.ia || {};
+function iaSources() {
+  const out = (db.cours || []).map(c => ({key: c.id, mat: c.mat || "Cours", label: (c.mat || "Cours") + " · cours du " + new Date(c.created).toLocaleDateString("fr-FR"), text: c.text}));
+  matsWithNotions().forEach(m => { const ns = db.notions.filter(n => matOf(n) === m && !n.off); if (!ns.length || out.some(s => s.mat === m)) return;
+    out.push({key: "notions:" + m, mat: m, label: m + " · mes notions", text: ns.map(n => n.text + (n.ex ? "\n" + n.ex : "")).join("\n")}); });
+  return out;
+}
+function iaEstimation(text) { const inTok = Math.round(text.length / 3.5) + 1400, outTok = Math.min(16000, 2500 + Math.round(text.length / 6)); return {inTok, outTok, prix: iaPrix(iaModel(), inTok, outTok)}; }
+async function iaAnalyser(src, onProgress) {
+  const t0 = Date.now(); let n = 0;
+  const r = await iaCall({system: IA_SYSTEME, maxTokens: 32000, effort: "medium", format: {type: "json_schema", schema: IA_SCHEMA},
+    messages: [{role: "user", content: `Matière : ${src.mat}\n\nVoici mes notes de cours :\n<cours>\n${src.text}\n</cours>`}],
+    onText: d => { n += d.length; if (onProgress) onProgress(Math.round((Date.now() - t0) / 1000), n); }});
+  let data; try { data = JSON.parse(r.text); } catch (e) { throw new Error("La réponse de l'IA est incomplète. Réessaie."); }
+  data.questions = (data.questions || []).filter(q => q.choix && q.choix.length >= 3 && q.choix.filter(c => c.juste).length === 1)
+    .map(q => Object.assign(q, {id: "ia" + uid()}));
+  const u = r.usage || {}, prix = iaPrix(iaModel(), (u.input_tokens || 0) + (u.cache_read_input_tokens || 0), u.output_tokens || 0);
+  db.ia[src.key] = {mat: src.mat, label: src.label, date: Date.now(), model: r.model, prix, data};
+  iaRanger(src.mat, data); save();
+  return db.ia[src.key];
+}
+/* Les notions sans chapitre prennent la partie du plan qui parle d'elles. */
+function iaRanger(m, data) {
+  db.notions.filter(n => matOf(n) === m && !chapOf(n)).forEach(n => { const hit = (data.notions || []).find(x => x.terme && hasWord(n.text, x.terme)); if (hit && hit.partie) n.chap = hit.partie; });
+}
+function iaAnalyses(m) { return Object.values(db.ia || {}).filter(a => !m || a.mat === m); }
+
+/* ---------- Le Quiz : les questions de l'IA remplacent les questions automatiques de la matière ---------- */
+function iaItems(m, ch) {
+  const out = []; iaAnalyses(m).forEach(a => (a.data.questions || []).forEach(q => {
+    if (ch && q.partie !== ch) return; out.push({iq: q, ia: a, id: q.id, mat: a.mat, chap: q.partie, kind: "def", qz: q.qz || (q.qz = {n: 0, ok: 0, last: 0})}); }));
+  return out;
+}
+var IA_OBJ = {comprendre: "Comprendre", appliquer: "Mise en situation", distinguer: "Ne pas confondre", retenir: "À retenir"};
+function makeIA(x, k) {
+  const iq = x.iq, juste = iq.choix.find(c => c.juste), faux = shuffle(iq.choix.filter(c => !c.juste));
+  return {t: "ia", x, quote: "", tag: IA_OBJ[iq.objectif] || "Comprendre", text: iq.question, good: juste.texte,
+    opts: faux.slice(0, db.niv === 1 ? 2 : faux.length).map(c => ({a: c.texte, why: c.pourquoi})), juste};
+}
+function iaPourquoi(q, c, good, p) {
+  const iq = q.x.iq;
+  if (!good && c.why) p("Ce que tu as choisi : " + c.why);
+  if (q.juste && q.juste.pourquoi) p("La bonne réponse : " + q.juste.pourquoi);
+  if (iq.explication) p("À retenir : " + iq.explication);
+  const n = (q.x.ia.data.notions || []).find(z => z.terme === iq.notion); if (n && n.exemple) p("Exemple : " + n.exemple);
+}
+
+/* ---------- Comprendre mon cours : le plan, les notions expliquées ---------- */
+let cpSel = "";
+function renderComprendre() {
+  const srcs = iaSources(), s = $("cp-src"); s.replaceChildren(); srcs.forEach(x => s.append(new Option(x.label + (db.ia[x.key] ? " ✓" : ""), x.key)));
+  if (!srcs.length) { $("cp-vide").hidden = false; $("cp-card").hidden = true; $("cp-res").replaceChildren(); return; }
+  $("cp-vide").hidden = true; $("cp-card").hidden = false;
+  if (!cpSel || !srcs.some(x => x.key === cpSel)) cpSel = (srcs.find(x => db.ia[x.key]) || srcs[0]).key; s.value = cpSel;
+  const src = srcs.find(x => x.key === cpSel), a = db.ia[cpSel], est = iaEstimation(src.text), key = !!dcKey();
+  $("cp-go").textContent = a ? "Refaire l'analyse" : "✨ Comprendre ce cours avec l'IA";
+  $("cp-go").disabled = !key;
+  $("cp-info").textContent = !key ? "Pour utiliser l'IA, ajoute ta clé dans Paramètres → L'IA de Notéa." :
+    (a ? `Analysé le ${new Date(a.date).toLocaleDateString("fr-FR")} avec ${(IA_MODELES[a.model] || [a.model])[0]} (${fmtPrix(a.prix || 0)}). ` : "") + `Une analyse avec ${IA_MODELES[iaModel()][0]} coûte ${fmtPrix(est.prix)}. Elle est faite une seule fois, puis gardée sur ton appareil.`;
+  $("cp-res").replaceChildren(a ? renderIA(a) : el("p", "muted", "Ce cours n'est pas encore analysé."));
+}
+function renderIA(a) {
+  const d = a.data, box = el("div", "stack"), notions = d.notions || [];
+  const top = el("div", "card hero-soft"); top.append(el("h2", "", d.titre || a.mat), el("p", "", d.resume || ""));
+  const b = el("button", "", "🔊 Écouter le résumé"); b.addEventListener("click", () => speak((d.titre || "") + ". " + (d.resume || ""))); top.append(b); box.append(top);
+  const parties = []; (d.plan || []).forEach(p => { parties.push([p, 1]); (p.sous_parties || []).forEach(sp => parties.push([sp, 2])); });
+  const vus = new Set();
+  parties.forEach(([p, lv]) => {
+    const c = el("details", "chap partie lv" + lv); c.open = lv === 1 && parties.length <= 8; const s = document.createElement("summary");
+    const ns = notions.filter(n => n.partie === p.titre); ns.forEach(n => vus.add(n));
+    s.append(el("b", "", p.titre), el("span", "muted", ns.length ? ns.length + " notion" + (ns.length > 1 ? "s" : "") : "")); c.append(s, el("p", "idee", p.idee || ""));
+    ns.forEach(n => c.append(notionIA(n)));
+    const nq = (d.questions || []).filter(q => q.partie === p.titre).length;
+    const r = el("div", "row"), l = el("button", "", "🔊 Écouter cette partie"); l.addEventListener("click", () => speak(p.titre + ". " + (p.idee || "") + " " + ns.map(n => n.terme + " : " + n.definition + ". " + n.explication).join(" ")));
+    r.append(l); if (nq) { const qb = el("button", "primary", `Quiz sur cette partie (${nq})`); qb.addEventListener("click", () => { tab("jeux"); $("jx-mat").value = a.mat; fillChapSel($("jx-chap"), a.mat); $("jx-chap").value = p.titre; cqStart(); }); r.append(qb); }
+    c.append(r); box.append(c); });
+  const reste = notions.filter(n => !vus.has(n)); if (reste.length) { const c = el("details", "chap partie"); const s = document.createElement("summary"); s.append(el("b", "", "Autres notions")); c.append(s); reste.forEach(n => c.append(notionIA(n))); box.append(c); }
+  return box;
+}
+function notionIA(n) {
+  const d = el("div", "nia" + (n.importance === "essentielle" ? " ess" : ""));
+  const h = el("div", "row"); h.append(el("b", "", n.terme)); if (n.importance === "essentielle") h.append(el("span", "chip imp", "Essentiel")); if (n.ajout_hors_notes) h.append(el("span", "chip", "Complété par l'IA"));
+  d.append(h, el("p", "", n.definition)); if (n.explication) d.append(el("p", "muted", n.explication)); if (n.exemple) d.append(el("p", "ex", "Exemple : " + n.exemple));
+  return d;
+}
+$("cp-src").addEventListener("change", () => { cpSel = $("cp-src").value; renderComprendre(); });
+$("cp-go").addEventListener("click", async () => {
+  const src = iaSources().find(x => x.key === cpSel); if (!src) return;
+  if (src.text.length > 400000) { note("Ce cours est très long. Coupe-le en plusieurs cours avant de l'analyser.", "warn"); return; }
+  const b = $("cp-go"); b.disabled = true; $("cp-info").textContent = "L'IA lit ton cours… (de 20 secondes à 2 minutes)";
+  try { const a = await iaAnalyser(src, (sec, n) => { $("cp-info").textContent = `L'IA lit et organise ton cours… ${sec} s`; });
+    note(`Cours compris : ${a.data.plan.length} parties, ${a.data.notions.length} notions, ${a.data.questions.length} questions de quiz (${fmtPrix(a.prix)}).`, "ok"); }
+  catch (e) { note(iaErreur(e), "err"); }
+  b.disabled = false; renderComprendre();
+});
+
+/* ---------- Paramètres : la clé et le modèle ---------- */
+function renderIAReglages() {
+  document.querySelectorAll("#ia-modele button").forEach(b => b.classList.toggle("on", b.dataset.m === iaModel()));
+  const n = Object.keys(db.ia || {}).length, total = Object.values(db.ia || {}).reduce((s, a) => s + (a.prix || 0), 0);
+  $("ia-etat").textContent = (dcKey() ? "Clé enregistrée sur cet appareil." : "Pas encore de clé.") + (n ? ` ${n} cours analysé${n > 1 ? "s" : ""} (${fmtPrix(total)} au total).` : "");
+}
+document.querySelectorAll("#ia-modele button").forEach(b => b.addEventListener("click", () => { lsSet("notea-modele", b.dataset.m); renderIAReglages(); }));
+$("ia-test").addEventListener("click", async () => {
+  $("ia-etat").textContent = "Je vérifie ta clé…";
+  try { const c = await iaClient(); const m = await c.models.retrieve(iaModel()); $("ia-etat").textContent = "✓ Ta clé marche. Modèle disponible : " + (m.display_name || m.id) + "."; }
+  catch (e) { $("ia-etat").textContent = "✗ " + iaErreur(e); }
+});
+$("cle-ok").addEventListener("click", () => setTimeout(renderIAReglages, 0));
+renderIAReglages();
+
+/* Le quiz : les questions de l'IA d'abord ; pour une matière analysée, plus de questions automatiques sur ses notions. */
+function cqItems(m, ch) {
+  const iaMats = new Set(iaAnalyses("").map(a => a.mat));
+  return iaItems(m, ch).concat(cqItemsBase(m, ch).filter(x => !(x.mq || x.text) || !iaMats.has(matOf(x))));
+}
+/* Le prof particulier connaît le plan et les notions expliquées. */
+function iaContexte(m) {
+  const as = iaAnalyses(m); if (!as.length) return "";
+  return as.map(a => `\n\nLe cours « ${a.data.titre || a.mat} » compris par Notéa :\nRésumé : ${a.data.resume}\nPlan : ${(a.data.plan || []).map(p => p.titre + (p.sous_parties || []).map(s => " / " + s.titre).join("")).join(" ; ")}\nNotions :\n` +
+    (a.data.notions || []).slice(0, 30).map(n => `- ${n.terme} (${n.partie}) : ${n.definition}`).join("\n")).join("");
+}
+Object.assign(SUBS, {comprendre: "Le plan de ton cours et ses notions, expliqués simplement."});
 
 /* ---------- Le bouton « retour » du navigateur marche, et la page ouverte est gardée ---------- */
 window.addEventListener("popstate", () => tab(TABS[location.hash.slice(1)] ? location.hash.slice(1) : "jour", true));

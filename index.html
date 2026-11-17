@@ -235,6 +235,17 @@
     </div>
   </section>
 
+  <!-- ===== Comprendre (IA) ===== -->
+  <section id="tab-comprendre" class="stack" hidden>
+    <div class="card" id="cp-vide" hidden><h2>Pas encore de cours</h2><p class="muted">Importe ou écris un cours dans « Mes cours ».</p></div>
+    <div class="card" id="cp-card">
+      <p class="muted">L'IA lit ton cours une seule fois. Elle retrouve le plan, explique chaque notion simplement, et prépare des questions de compréhension pour ton quiz.</p>
+      <div class="row"><label for="cp-src"><b>Cours</b></label><select id="cp-src" style="flex:1 1 240px"></select><button class="primary" id="cp-go">✨ Comprendre ce cours avec l'IA</button></div>
+      <p class="muted" id="cp-info" role="status"></p>
+    </div>
+    <div id="cp-res" class="stack"></div>
+  </section>
+
   <!-- ===== Lire et écouter ===== -->
   <section id="tab-lecture" class="stack" hidden>
     <div class="card" id="lec-vide" hidden>
@@ -565,10 +576,18 @@
         <div class="group"><label class="lab" for="exam">Date du partiel</label><input type="date" id="exam"><span class="muted">Pour toutes les matières sans date. Une date par matière se règle dans « Mon planning ».</span></div>
       </div>
     </div>
-    <div class="card">
-      <h2>Discussion avec l'IA</h2>
-      <p class="muted">Facultatif. Sans clé, Notéa utilise l'IA de ton appareil si elle existe, sinon elle ouvre Claude.ai. La clé reste sur cet appareil.</p>
-      <div class="row"><label for="cle"><b>Clé Claude</b></label><input type="password" id="cle" placeholder="sk-ant-…" autocomplete="off" style="flex:1 1 220px"><button id="cle-ok">Enregistrer</button></div>
+    <div class="card" id="ia-card">
+      <h2>✨ L'IA de Notéa</h2>
+      <p>Avec une clé Claude, l'IA comprend tes cours : le plan, les notions expliquées simplement, et des questions qui vérifient que tu as compris. Elle sert aussi au prof particulier.</p>
+      <ol class="steps">
+        <li>Crée un compte sur <b>platform.claude.com</b> et ajoute un petit crédit (5 $ suffisent pour beaucoup de cours).</li>
+        <li>Dans <b>API keys</b>, crée une clé et copie-la.</li>
+        <li>Colle-la ici, puis <b>Enregistrer</b> et <b>Tester ma clé</b>.</li>
+      </ol>
+      <div class="row"><label for="cle"><b>Clé Claude</b></label><input type="password" id="cle" placeholder="sk-ant-…" autocomplete="off" style="flex:1 1 220px"><button id="cle-ok">Enregistrer</button><button id="ia-test">Tester ma clé</button></div>
+      <div class="group"><span class="lab">Modèle</span><span class="seg2" id="ia-modele"><button data-m="claude-opus-5-5">Opus 5.5 · le meilleur</button><button data-m="claude-sonnet-5-5">Sonnet 5.5 · 2 fois moins cher</button><button data-m="claude-haiku-5-5">Haiku 5.5 · le moins cher</button></span></div>
+      <p class="muted" id="ia-etat" role="status"></p>
+      <p class="muted">Ta clé reste sur cet appareil et n'est envoyée qu'à Anthropic. Ne la partage pas. Mets une limite de dépense sur ton compte.</p>
     </div>
     <div class="card">
       <h2>Mes données</h2>
@@ -593,18 +612,18 @@
 <datalist id="chap-list"></datalist>
 <div id="sheet"></div>
 <div class="ruler" id="ruler-t" hidden></div><div class="ruler" id="ruler-b" hidden></div>
-<script src="js/moteur/00-outils.js?v=1.6"></script>
-<script src="js/moteur/01-ingestion.js?v=1.6"></script>
-<script src="js/moteur/02-classification.js?v=1.6"></script>
-<script src="js/moteur/03-semantique.js?v=1.6"></script>
-<script src="js/moteur/04-pertinence.js?v=1.6"></script>
-<script src="js/moteur/05-graphe.js?v=1.6"></script>
-<script src="js/moteur/06-pedagogie.js?v=1.6"></script>
-<script src="js/moteur/07-eleve.js?v=1.6"></script>
-<script src="js/moteur/08-generation.js?v=1.6"></script>
-<script src="js/moteur/09-schemas.js?v=1.6"></script>
-<script src="js/moteur/10-adaptation.js?v=1.6"></script>
-<script src="js/moteur/11-pipeline.js?v=1.6"></script>
-<script src="js/app.js?v=1.6"></script>
+<script src="js/moteur/00-outils.js?v=1.7"></script>
+<script src="js/moteur/01-ingestion.js?v=1.7"></script>
+<script src="js/moteur/02-classification.js?v=1.7"></script>
+<script src="js/moteur/03-semantique.js?v=1.7"></script>
+<script src="js/moteur/04-pertinence.js?v=1.7"></script>
+<script src="js/moteur/05-graphe.js?v=1.7"></script>
+<script src="js/moteur/06-pedagogie.js?v=1.7"></script>
+<script src="js/moteur/07-eleve.js?v=1.7"></script>
+<script src="js/moteur/08-generation.js?v=1.7"></script>
+<script src="js/moteur/09-schemas.js?v=1.7"></script>
+<script src="js/moteur/10-adaptation.js?v=1.7"></script>
+<script src="js/moteur/11-pipeline.js?v=1.7"></script>
+<script src="js/app.js?v=1.7"></script>
 </body>
 </html>
