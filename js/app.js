@@ -109,10 +109,10 @@ function newPerDay(m, now) {
   const ex = dueTime(m); if (!ex || ex < now) return Math.min(fresh, NEW_MAX);
   return Math.ceil(fresh / Math.max(1, (ex - now) / DAY - 2));
 }
-function newQuota(now) { let q = 0; new Set(db.notions.map(matOf)).forEach(m => { q += newPerDay(m, now); }); return Math.min(30, Math.max(NEW_MAX, q)); }
+function newQuota(now) { let q = 0; new Set(db.notions.map(matOf)).forEach(m => { q += newPerDay(m, now); }); return Math.min(60, q); }   // une matière avec examen suit son plan ; les autres : 10 nouvelles par jour au plus
 function todayQueue(now = Date.now()) {
   if (onVacation()) return [];
-  const budget = Math.max(60, (db.minutes || plannedToday()) * 60);
+  const besoin = examBesoinAujourdhui(), budget = Math.max(60, (db.minutes || plannedToday()) * 60, besoin.min * 60), cap = dayCap();   // un examen approche : on prend le temps qu'il faut
   const end = new Date(); end.setHours(23, 59, 59, 999);
   const live = db.notions.filter(n => !finished(n, now) && !n.off);
   // d'abord ce qui s'oublie le plus, dans les matières qui comptent le plus et dont l'examen approche
@@ -120,11 +120,11 @@ function todayQueue(now = Date.now()) {
   const fresh = live.filter(n => !n.last).sort((a, b) => weight(matOf(b), now) - weight(matOf(a), now) || (b.mark === "dif" || b.mark === "q") - (a.mark === "dif" || a.mark === "q") || a.created - b.created)
     .slice(0, Math.max(0, newQuota(now) - db.newToday));
   const out = []; let t = 0;
-  for (const n of due.concat(fresh)) { if ((t + secFor(n) > budget && out.length >= 3) || out.length >= DAY_MAX) break; out.push(n); t += secFor(n); }
+  for (const n of due.concat(fresh)) { if ((t + secFor(n) > budget && out.length >= 3) || out.length >= cap) break; out.push(n); t += secFor(n); }
   return mixMQ(interleave(out), now);
 }
 function renderToday() {
-  const q = todayQueue(), n = q.length; homeStats(q);
+  const q = todayQueue(), n = q.length; homeStats(q); renderExamToday();
   $("bienvenue").hidden = !!db.notions.length; $("accueil").hidden = !db.notions.length && $("seance").hidden;
   const exs = [...new Set(db.notions.map(matOf))].map(m => [m, dueTime(m)]).filter(x => x[1] > Date.now()).sort((a, b) => a[1] - b[1]);
   if ($("tuile-plan")) $("tuile-plan").textContent = exs.length ? `Prochaine échéance : ${exs[0][0]}, ${when(exs[0][1])}.` : "Ajoute tes échéances et tes coefficients : le planning se fait tout seul.";
@@ -132,7 +132,7 @@ function renderToday() {
   if (!db.notions.length) { $("jour-titre").textContent = "Rien à réviser pour l'instant"; $("jour-sous").textContent = "Importe un cours : une photo, un PDF, un Word, un PowerPoint ou un texte."; return; }
   if (onVacation()) { $("jour-titre").textContent = "Mode vacances"; $("jour-sous").textContent = "Repose-toi. Au retour, tes notions reviennent petit à petit, sans retard à rattraper d'un coup."; $("go").disabled = true; $("jour-suite").textContent = ""; return; }
   if (!n) { const next = Math.min(...db.notions.map(x => x.due || Infinity)); $("jour-titre").textContent = "Tout est à jour"; $("jour-sous").textContent = "Reviens " + when(next) + ". Ton cerveau a besoin de temps pour oublier un peu."; $("go").disabled = true; $("jour-suite").textContent = ""; return; }
-  const min = Math.max(1, Math.round(q.reduce((s, x) => s + secFor(x), 0) / 60));
+  const min = Math.max(1, sessionMin(q));
   $("jour-titre").textContent = `${n} notion${n > 1 ? "s" : ""} · environ ${min} min`;
   $("jour-sous").textContent = "Arrête-toi quand tu veux. Ce que tu ne fais pas aujourd'hui revient demain.";
   $("jour-suite").textContent = exs.length ? `${exs[0][0]} : examen ${when(exs[0][1])}` : "";
@@ -654,7 +654,7 @@ function setMat(m, k, v) { db.mats[m] = Object.assign(matInfo(m), {[k]: v}); sav
 function renderMats() {
   const box = $("mats"); box.replaceChildren(); const ms = matsWithNotions();
   if (!ms.length) { const p = document.createElement("p"); p.className = "muted"; p.textContent = "Importe un cours : ses matières apparaîtront ici."; box.append(p); return; }
-  const h = document.createElement("div"); h.className = "mrow head"; ["Matière", "Fini d'apprendre le", "Coefficient", "Je veux retenir"].forEach(t => { const s = document.createElement("span"); s.textContent = t; h.append(s); }); box.append(h);
+  const h = document.createElement("div"); h.className = "mrow head"; ["Matière", "Date de l'examen", "Coefficient", "Je veux retenir"].forEach(t => { const s = document.createElement("span"); s.textContent = t; h.append(s); }); box.append(h);
   ms.forEach(m => {
     const i = matInfo(m), r = document.createElement("div"); r.className = "mrow";
     const nm = document.createElement("b"); const d = document.createElement("span"); d.className = "dot"; d.style.background = colOf(m); nm.append(d, m);
@@ -1261,7 +1261,7 @@ function tab(name, fromNav) {
   $("page-t").textContent = TABS[name][0]; pageHead(name); document.title = TABS[name][0] + " · Notéa"; window.scrollTo(0, 0);
   Object.keys(TABS).forEach(t => { $("tab-" + t).hidden = t !== name; });
   if (name !== "lecture") lecStop();
-  if (name === "notes") renderList();
+  if (name === "notes") { renderList(); renderExams(); }
   if (name === "notions") { renderFolders(); const dl = $("mat-list"); dl.replaceChildren(); matsWithNotions().forEach(m => { const o = document.createElement("option"); o.value = m; dl.append(o); }); }
   if (name === "jour") { renderTiles(); renderToday(); }
   if (name === "discu") { fillMats($("dc-mat")); dcEngine().then(e => { $("dc-chip").textContent = e === "builtin" ? "IA sur l'appareil" : e === "api" ? "IA : Claude (clé)" : "IA : via Claude.ai"; }); }
@@ -1567,7 +1567,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.5";
+const VERSION = "1.6";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -1708,7 +1708,7 @@ function pageHead(name) {
 /* ---------- Accueil : 3 chiffres et la prochaine session ---------- */
 function homeStats(q) {
   const now = Date.now(), live = db.notions.filter(n => !finished(n, now) && !n.off);
-  $("st-min").textContent = q.length ? Math.max(1, Math.round(q.reduce((s, x) => s + secFor(x), 0) / 60)) : 0;
+  $("st-min").textContent = q.length ? Math.max(1, sessionMin(q)) : 0;
   $("st-n").textContent = q.length; $("st-pc").textContent = mastery(live, now) + " %";
   let h = "–"; try { if (q.length) { const it = plan()[0].items.find(x => x.type === "rev"); h = it ? hm(it.f) : "Libre"; } } catch (e) {}
   $("st-heure").textContent = h;
@@ -1727,7 +1727,7 @@ function renderFolders() {
   ms.forEach((m, i) => { const ns = db.notions.filter(n => matOf(n) === m), nc = db.cours.filter(c => c.mat === m).length, pc = mastery(ns, now);
     const b = el("button", "folder f" + (i % 4)); b.setAttribute("aria-label", `${m}, ${ns.length} notions, maîtrise ${pc} %. Ouvrir dans mon carnet`);
     const tr = el("span", "track"), bar = document.createElement("i"); bar.style.width = Math.max(4, pc) + "%"; tr.append(bar);
-    b.append(svgIc("folder"), el("b", "", m), el("span", "sub", (chN(m) ? chN(m) + " chapitre" + (chN(m) > 1 ? "s" : "") + " · " : nc ? nc + " cours · " : "") + ns.length + " notion" + (ns.length > 1 ? "s" : "")), tr, el("span", "sub", "Maîtrise " + pc + " %"));
+    b.append(svgIc("folder"), el("b", "", m), el("span", "sub", (chN(m) ? chN(m) + " chapitre" + (chN(m) > 1 ? "s" : "") + " · " : nc ? nc + " cours · " : "") + ns.length + " notion" + (ns.length > 1 ? "s" : "")), tr, el("span", "sub", "Maîtrise " + pc + " %" + (dueTime(m) && joursAvant(dueTime(m), Date.now()) >= 0 ? " · examen " + dansJ(joursAvant(dueTime(m), Date.now())) : "")));
     b.addEventListener("click", () => { nMat = m; nFilter = "tout"; tab("notes"); }); box.append(b); });
   $("imp-card").hidden = ms.length > 0 && !impOpen && $("pick-card").hidden;
 }
@@ -2368,6 +2368,149 @@ function moteurContexte(m) {
     if (faibles.length) lines.push("L'élève maîtrise encore mal : " + faibles.slice(0, 6).join(", ") + ". Commence par ces notions, en respectant l'ordre conseillé.");
   });
   return lines.length ? lines.join("\n") + "\nAppuie-toi seulement sur ces informations et sur les notions données. N'invente rien." : "";
+}
+
+
+/* =====================================================================
+   Version 1.6 : la date de l'examen crée le plan de révision.
+   L'élève met la date du contrôle d'une matière. Notéa simule, jour par jour, avec le vrai algorithme (FSRS) :
+   - les nouvelles notions sont étalées pour avoir tout vu 3 jours avant (J-3) ;
+   - chaque notion revient juste avant d'être oubliée, puis une dernière fois la veille ;
+   - J-3 : feuille blanche ; J-2 : examen blanc ; J-1 : révision finale et quiz ; chaque semaine : un quiz.
+   La révision du jour suit ce plan : elle prend le temps qu'il faut, pas seulement les minutes choisies.
+   ===================================================================== */
+/* Minutes d'une séance : une nouvelle notion prend 45 s de plus (la découvrir), et on compte 15 % de marge. Le plan et l'accueil utilisent le même calcul. */
+function sessionMin(q) { return Math.max(1, Math.round(q.reduce((s, x) => s + secFor(x) + (x.last ? 0 : 45), 0) * 1.15 / 60)); }
+function jour0(t) { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); }
+function joursAvant(ex, now) { return Math.round((jour0(ex) - jour0(now)) / DAY); }
+function examsAVenir(now = Date.now()) { return matsWithNotions().map(m => [m, dueTime(m)]).filter(([, ex]) => ex && joursAvant(ex, now) >= 0).sort((a, b) => a[1] - b[1]); }
+var ACT = {
+  blanche: ["📝", "Feuille blanche", "Écris tout ce dont tu te souviens, sans le cours.", 10],
+  examen: ["🎯", "Examen blanc", "Comme le jour J, avec une note sur 20.", 20],
+  quiz: ["🃏", "Quiz", "Un quiz sur les notions apprises.", 8],
+  finale: ["⭐", "Révision finale", "Un dernier quiz sur tes notions fragiles.", 10]
+};
+function examPlan(m, now = Date.now()) {
+  const ex = dueTime(m); if (!ex) return null; const D = joursAvant(ex, now); if (D < 0) return null;
+  const sim = db.notions.filter(n => matOf(n) === m && !n.off).map(n => Object.assign({}, n));
+  const fresh = sim.filter(n => !n.last).sort((a, b) => (b.mark === "dif" || b.mark === "q") - (a.mark === "dif" || a.mark === "q") || a.created - b.created);
+  const per = Math.max(1, newPerDay(m, now)), dernier = Math.max(0, D - 3);   // le même calcul que la révision du jour
+  const deja = db.day === today() ? Math.min(per, db.newToday || 0) : 0;   // les nouvelles déjà vues aujourd'hui comptent pour aujourd'hui
+  fresh.forEach((n, k) => { n._learn = Math.min(dernier, Math.floor((k + deja) / per)); });
+  const d0 = jour0(now), days = [];
+  for (let i = 0; i <= D; i++) {
+    const day = {i, date: new Date(d0 + i * DAY + 3 * 3600e3), nouvelles: 0, revisions: 0, sec: 0, acts: [], jourJ: i === D};
+    if (i < D) { const t = Math.max(now, d0 + i * DAY + 18 * 3600e3), fin = d0 + (i + 1) * DAY;
+      sim.forEach(n => {
+        if (!n.last) { if (n._learn === i) { schedule(n, 2, t, true); day.nouvelles++; day.sec += 45 + secFor(n); } }
+        else if (n.due < fin) { schedule(n, 2, t, true); day.revisions++; day.sec += secFor(n); } });
+      const avant = D - i;
+      if (D >= 4 && avant === 3 || D === 3 && avant === 2) day.acts.push("blanche");
+      if (D >= 3 && avant === 2 || D === 2 && avant === 1 || D === 1 && avant === 1) day.acts.push("examen");
+      if (avant === 1 && D >= 3) day.acts.push("finale");
+      if (avant > 3 && i > 0 && i % 7 === 0) day.acts.push("quiz");
+    }
+    day.min = day.sec ? Math.max(1, Math.round(day.sec * 1.15 / 60)) : 0;     // +15 % : on ne réussit pas tout du premier coup
+    day.total = day.min + day.acts.reduce((s, a) => s + ACT[a][3], 0);
+    days.push(day);
+  }
+  const travail = days.filter(d => !d.jourJ), moy = travail.length ? Math.round(travail.reduce((s, d) => s + d.total, 0) / travail.length) : 0;
+  const pic = travail.reduce((a, d) => d.total > a.total ? d : a, {total: 0});
+  const vues = sim.map(n => n.reps || 0);
+  return {m, ex, D, days, notions: sim.length, nouvelles: fresh.length, dejaVues: sim.length - fresh.length, moy, pic,
+    minRevues: vues.length ? Math.min(...vues) : 0, max: (db.mats[m] || {}).minutes || 0};
+}
+/* Ce que la révision du jour doit contenir pour tenir les plans (temps et nombre de notions). */
+function examBesoinAujourdhui() {
+  if (!ACT) return {min: 0, n: 0};   // au tout début du chargement
+  let min = 0, n = 0; examsAVenir().forEach(([m]) => { const p = examPlan(m); if (p && p.days[0]) { min += p.days[0].min; n += p.days[0].nouvelles + p.days[0].revisions; } });
+  return {min, n};
+}
+function dayCap() { return Math.max(DAY_MAX || 20, Math.min(60, examBesoinAujourdhui().n)); }
+
+/* ---------- Mon carnet : « Mes examens » ---------- */
+const fmtJour = d => new Date(d).toLocaleDateString("fr-FR", {weekday: "long", day: "numeric", month: "long"});
+const dansJ = n => n === 0 ? "aujourd'hui" : n === 1 ? "demain" : `dans ${n} jours`;
+let examOuvert = "";
+function renderExams() {
+  const box = $("exam-list"); box.replaceChildren(); const now = Date.now(), list = examsAVenir(now);
+  if (!list.length) box.append(el("p", "muted", "Ajoute la date de ton prochain contrôle : Notéa prépare toutes tes séances jusqu'au jour J."));
+  list.forEach(([m, ex]) => { const D = joursAvant(ex, now), n = db.notions.filter(x => matOf(x) === m && !x.off).length;
+    const r = el("div", "nrow exrow"), l = document.createElement("div"); const t = el("p", "t"), dot = el("span", "dot"); dot.style.background = colOf(m);
+    t.append(dot, el("b", "", m)); l.append(t, el("p", "when", `${fmtJour(ex)} · ${dansJ(D)} · ${n} notion${n > 1 ? "s" : ""}`));
+    const a = el("div", "row"), b1 = el("button", "primary", examOuvert === m ? "Cacher le plan" : "Voir mon plan"), b2 = el("button", "", "Modifier"), b3 = el("button", "", "Enlever");
+    b1.addEventListener("click", () => { examOuvert = examOuvert === m ? "" : m; renderExams(); });
+    b2.addEventListener("click", () => examForm(m));
+    b3.addEventListener("click", () => { const old = matInfo(m).due; setMat(m, "due", ""); if (examOuvert === m) examOuvert = ""; renderExams(); renderToday(); noteUndo(`Examen de ${m} enlevé.`, () => { setMat(m, "due", old); renderExams(); renderToday(); }); });
+    a.append(b1, b2, b3); r.append(l, a); box.append(r);
+    if (examOuvert === m) box.append(renderPlan2(examPlan(m))); });
+}
+function examForm(m) {
+  const f = $("exam-form"); f.hidden = false; const s = $("exam-mat"); s.replaceChildren();
+  matsWithNotions().forEach(x => s.append(new Option(x, x)));
+  if (m || nMat) s.value = m || nMat; $("exam-date").value = matInfo(s.value).due || ""; $("exam-date").min = today();
+  const mx = matInfo(s.value).minutes || 0; document.querySelectorAll("#exam-min button").forEach(b => b.classList.toggle("on", Number(b.dataset.min) === mx));
+  f.scrollIntoView({block: "nearest", behavior: "smooth"}); $("exam-date").focus();
+}
+$("exam-add").addEventListener("click", () => examForm(""));
+$("exam-mat").addEventListener("change", () => examForm($("exam-mat").value));
+document.querySelectorAll("#exam-min button").forEach(b => b.addEventListener("click", () => document.querySelectorAll("#exam-min button").forEach(x => x.classList.toggle("on", x === b))));
+$("exam-cancel").addEventListener("click", () => { $("exam-form").hidden = true; });
+$("exam-ok").addEventListener("click", () => {
+  const m = $("exam-mat").value, d = $("exam-date").value;
+  if (!m) { note("Importe d'abord un cours : il faut une matière.", "warn"); return; }
+  if (!d || d < today()) { note("Choisis une date d'examen à venir.", "warn"); $("exam-date").focus(); return; }
+  const on = document.querySelector("#exam-min button.on");
+  db.mats[m] = Object.assign(matInfo(m), {due: d, minutes: on ? Number(on.dataset.min) : 0}); save();
+  $("exam-form").hidden = true; examOuvert = m; renderExams(); renderToday();
+  const p = examPlan(m); note(p ? `Ton plan pour ${m} est prêt : ${p.D} jour${p.D > 1 ? "s" : ""}, environ ${p.moy} min par jour.` : "Examen enregistré.", "ok");
+});
+function renderPlan2(p) {
+  const box = el("div", "plan2"); if (!p) return box;
+  const r = el("div", "stats");
+  r.append(statTile(String(p.D), p.D > 1 ? "jours avant l'examen" : "jour avant l'examen"), statTile(String(p.nouvelles), "notions à découvrir"),
+    statTile(p.moy + " min", "par jour en moyenne"), statTile(p.minRevues >= 2 ? "≥ " + p.minRevues : String(p.minRevues), "fois chaque notion revue avant J"));
+  box.append(r);
+  const msgs = [];
+  if (p.D <= 2) msgs.push(["warn", "L'examen est très proche : Notéa met tout ce qui compte en premier. Garde un peu de temps pour te reposer la veille."]);
+  if (p.max && p.pic.total > p.max) msgs.push(["warn", `Le jour le plus chargé (${fmtJour(p.pic.date)}) demande ${p.pic.total} min, plus que tes ${p.max} min. Avance quelques séances ou monte un peu ton temps ce jour-là.`]);
+  if (p.minRevues < 2 && p.notions && p.D >= 3) msgs.push(["warn", "Certaines notions ne seront revues qu'une fois : ajoute un peu de temps chaque jour si tu peux."]);
+  msgs.push(["ok", "Le plan se met à jour tout seul : si tu rates une notion, elle revient plus tôt. Si tu sautes un jour, le reste se répartit."]);
+  msgs.forEach(([k, t]) => box.append(el("p", "msg " + k, t)));
+  const list = el("ol", "plandays");
+  p.days.forEach(d => { const li = el("li", "pday" + (d.i === 0 ? " today" : "") + (d.jourJ ? " jj" : ""));
+    const h = el("div", "pd-h"); h.append(el("b", "", d.i === 0 ? "Aujourd'hui" : d.i === 1 ? "Demain" : fmtJour(d.date)), el("span", "muted", d.jourJ ? "Jour J" : `J-${p.D - d.i} · ${d.total} min`));
+    const c = el("div", "row");
+    if (d.jourJ) c.append(el("span", "", "C'est le jour de l'examen. Pas de nouvelle notion. Relis tes cartes 5 minutes si tu veux, puis fais-toi confiance. Bonne chance !"));
+    else {
+      if (d.nouvelles) c.append(el("span", "chip q", `🆕 ${d.nouvelles} nouvelle${d.nouvelles > 1 ? "s" : ""}`));
+      if (d.revisions) c.append(el("span", "chip", `🔁 ${d.revisions} révision${d.revisions > 1 ? "s" : ""}`));
+      d.acts.forEach(a => c.append(el("span", "chip imp", ACT[a][0] + " " + ACT[a][1])));
+      if (!d.nouvelles && !d.revisions && !d.acts.length) c.append(el("span", "muted", d.i === 0 && (db.log || []).some(x => x[0] >= jour0(Date.now())) ? "✓ C'est fait pour aujourd'hui. Bravo !" : "Repos : ton cerveau consolide."));
+      if (d.i === 0 && (d.nouvelles || d.revisions)) { const b = el("button", "primary", "Commencer ma séance"); b.addEventListener("click", () => { tab("jour"); startSession(); }); c.append(b); }
+    }
+    li.append(h, c); list.append(li); });
+  box.append(list);
+  return box;
+}
+
+/* ---------- Accueil : ce qu'il faut faire aujourd'hui pour les examens ---------- */
+function goAct(a, m) {
+  if (a === "blanche") { tab("blanche"); if ([...$("fb-mat").options].some(o => o.value === m)) { $("fb-mat").value = m; fbStart(); } }
+  else if (a === "examen") { tab("examen"); $("ex-mat").value = m; }
+  else { tab("jeux"); $("jx-mat").value = m; fillChapSel($("jx-chap"), m); }
+}
+function renderExamToday() {
+  if (!ACT) return;
+  const box = $("exam-today"); if (!box) return; box.replaceChildren(); const now = Date.now(), list = examsAVenir(now).filter(([, ex]) => joursAvant(ex, now) <= 30);
+  box.hidden = !list.length; if (!list.length) return;
+  box.append(el("h2", "", "Mes examens"));
+  list.forEach(([m, ex]) => { const p = examPlan(m, now), d = p && p.days[0], D = joursAvant(ex, now);
+    const r = el("div", "nrow"), l = document.createElement("div"); l.append(el("p", "t", `${m} · ${dansJ(D)}`));
+    l.append(el("p", "when", d && d.jourJ ? "C'est aujourd'hui. Bonne chance !" : d ? `Aujourd'hui : ${d.nouvelles} nouvelle${d.nouvelles > 1 ? "s" : ""}, ${d.revisions} révision${d.revisions > 1 ? "s" : ""}` + (d.acts.length ? " + " + d.acts.map(a => ACT[a][1].toLowerCase()).join(", ") : "") + ` · environ ${d.total} min` : ""));
+    const a = el("div", "row"); (d ? d.acts : []).forEach(x => { const b = el("button", "", ACT[x][0] + " " + ACT[x][1]); b.addEventListener("click", () => goAct(x, m)); a.append(b); });
+    const v = el("button", "", "Mon plan"); v.addEventListener("click", () => { examOuvert = m; nMat = m; tab("notes"); }); a.append(v);
+    r.append(l, a); box.append(r); });
 }
 
 /* ---------- Le bouton « retour » du navigateur marche, et la page ouverte est gardée ---------- */

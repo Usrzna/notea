@@ -41,6 +41,7 @@ Détails : `docs/MOTEUR.md`. Où on en est : `docs/MOTEUR-AVANCEMENT.md`. Tests 
 - **Mes cours** : un dossier par matière, import, lecture à voix haute.
 - **Mon carnet** : notions triées (à retravailler, peu compris, réussies), feuille blanche, carte mentale, quiz, examen, mots.
 - **Quiz** (version 1.3) : une carte qui se retourne. Au recto, la question et au moins 3 choix. Au verso : juste ou faux, la bonne réponse et l'explication. Formes de questions : définition, mot à retrouver, exemple à relier à sa notion, affirmations à démêler, dates, exercices et cartes de l'élève. Les mauvaises réponses viennent du même cours, du même chapitre et du même type de notion.
+- **Mes examens** (version 1.6, dans Mon carnet) : on met la date du contrôle d'une matière. Notéa simule chaque jour jusqu'au jour J avec FSRS : nouvelles notions étalées pour tout avoir vu à J-3, chaque notion revue juste avant l'oubli et la veille, feuille blanche à J-3, examen blanc à J-2, révision finale à J-1, un quiz par semaine. La révision du jour suit ce plan (même calcul), et l'accueil dit quoi faire aujourd'hui.
 - **Questions à trous** : un outil à part (Facile 3 choix, Moyen 4, Difficile à écrire).
 - **Mes cartes** : recto et verso écrits par l'élève, rangés par chapitre, révisés avec FSRS.
 - **Créer à la main** (Mes cours) : écrire son cours, ses notions (définition, concept, formule, date, à retenir, règle), ses exercices avec leurs pièges.

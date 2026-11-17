@@ -101,6 +101,7 @@
         </div>
         <p class="muted" id="jour-sous"></p><span class="muted" id="jour-suite"></span>
       </div>
+      <div class="card" id="exam-today" hidden></div>
     </div>
 
     <div id="pref" class="muted" hidden></div>
@@ -196,6 +197,17 @@
 
   <!-- ===== Mon carnet de notions ===== -->
   <section id="tab-notes" class="stack" hidden>
+    <div class="card" id="exam-card">
+      <div class="row" style="justify-content:space-between"><h2>📅 Mes examens</h2><button class="primary" id="exam-add">+ Ajouter un examen</button></div>
+      <div id="exam-list" class="nlist"></div>
+      <div id="exam-form" class="stack" style="gap:12px" hidden>
+        <div class="row"><label for="exam-mat"><b>Matière</b></label><select id="exam-mat" style="flex:1 1 200px"></select>
+          <label for="exam-date"><b>Date de l'examen</b></label><input type="date" id="exam-date"></div>
+        <div class="row"><b>Temps maximum par jour</b><span class="seg2" id="exam-min"><button data-min="0" class="on">Ce qu'il faut</button><button data-min="15">15 min</button><button data-min="30">30 min</button><button data-min="45">45 min</button><button data-min="60">1 h</button></span></div>
+        <p class="muted">Notéa étale les nouvelles notions pour tout avoir vu 3 jours avant, fait revenir chaque notion juste avant l'oubli, puis prévoit une feuille blanche, un examen blanc et une révision finale.</p>
+        <div class="row"><button class="primary" id="exam-ok">Créer mon plan de révision</button><button id="exam-cancel">Annuler</button></div>
+      </div>
+    </div>
     <div class="filters" id="nf" role="group" aria-label="Trier mes notions"></div>
     <p class="muted" id="nmat" hidden></p>
     <div class="card">
@@ -581,18 +593,18 @@
 <datalist id="chap-list"></datalist>
 <div id="sheet"></div>
 <div class="ruler" id="ruler-t" hidden></div><div class="ruler" id="ruler-b" hidden></div>
-<script src="js/moteur/00-outils.js?v=1.5"></script>
-<script src="js/moteur/01-ingestion.js?v=1.5"></script>
-<script src="js/moteur/02-classification.js?v=1.5"></script>
-<script src="js/moteur/03-semantique.js?v=1.5"></script>
-<script src="js/moteur/04-pertinence.js?v=1.5"></script>
-<script src="js/moteur/05-graphe.js?v=1.5"></script>
-<script src="js/moteur/06-pedagogie.js?v=1.5"></script>
-<script src="js/moteur/07-eleve.js?v=1.5"></script>
-<script src="js/moteur/08-generation.js?v=1.5"></script>
-<script src="js/moteur/09-schemas.js?v=1.5"></script>
-<script src="js/moteur/10-adaptation.js?v=1.5"></script>
-<script src="js/moteur/11-pipeline.js?v=1.5"></script>
-<script src="js/app.js?v=1.5"></script>
+<script src="js/moteur/00-outils.js?v=1.6"></script>
+<script src="js/moteur/01-ingestion.js?v=1.6"></script>
+<script src="js/moteur/02-classification.js?v=1.6"></script>
+<script src="js/moteur/03-semantique.js?v=1.6"></script>
+<script src="js/moteur/04-pertinence.js?v=1.6"></script>
+<script src="js/moteur/05-graphe.js?v=1.6"></script>
+<script src="js/moteur/06-pedagogie.js?v=1.6"></script>
+<script src="js/moteur/07-eleve.js?v=1.6"></script>
+<script src="js/moteur/08-generation.js?v=1.6"></script>
+<script src="js/moteur/09-schemas.js?v=1.6"></script>
+<script src="js/moteur/10-adaptation.js?v=1.6"></script>
+<script src="js/moteur/11-pipeline.js?v=1.6"></script>
+<script src="js/app.js?v=1.6"></script>
 </body>
 </html>
