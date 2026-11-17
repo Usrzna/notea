@@ -109,7 +109,7 @@ kbd{font:700 12px/1 var(--font);border:1px solid currentColor;border-radius:var(
 @media (hover:none){kbd{display:none}}
 
 /* ---------- Saisie ---------- */
-input[type=text],input[type=password],input[type=date],input[type=time],input[type=number],select,textarea{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:10px var(--space-3);min-height:44px;max-width:100%}
+input[type=text],input[type=password],input[type=email],input[type=date],input[type=time],input[type=number],select,textarea{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:10px var(--space-3);min-height:44px;max-width:100%}
 textarea{width:100%;min-height:96px;resize:vertical;line-height:var(--lh)}
 input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
 ::placeholder{color:var(--text-2);opacity:1}

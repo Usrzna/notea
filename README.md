@@ -11,7 +11,7 @@ C'est un site statique : pas d'installation. Ouvre `index.html` avec un petit se
 npx http-server . -p 4173
 ```
 
-Tout reste sur l'appareil de l'élève (localStorage). Rien n'est envoyé.
+Les cours et la progression restent sur l'appareil de l'élève (localStorage). Seule l'IA passe par internet (voir « Compte Notéa et serveur »).
 
 ## Ce que fait l'appli
 
@@ -56,11 +56,31 @@ Base : Digital Productivity Ecosystem, référentiel v2.0.
 Tokens dans `css/notea.css` : couleurs sémantiques clair et sombre, grille de 4 pt, rayons, mouvement.
 Le verre est réservé à la navigation et aux barres d'outils. Le contenu repose sur des surfaces opaques.
 
+## Compte Notéa et serveur (version 1.8)
+
+L'IA marche sans clé : l'élève se connecte (lien magique par e-mail) et dépense des **crédits**. La consommation est payée par le compte Anthropic de Notéa.
+
+- **Serveur** : Supabase, projet `notea` (Europe, Paris). Code dans `supabase/`.
+- **Base** (`supabase/migrations/`) : `paliers` (offres), `profils` (crédits, palier, date de recharge, accord RGPD), `appels` (journal sans le texte des cours). RLS : chaque élève ne lit que sa ligne et n'écrit rien directement.
+- **Edge Functions** (`supabase/functions/`) :
+  - `comprendre` : même consigne et même schéma que `iaAnalyser`. 5 crédits. Cours de 120 000 caractères au plus. 3 appels par minute au plus.
+  - `discuter` : le prof particulier. 1 crédit par réponse. 10 appels par minute au plus.
+  - `supprimer-compte` : « Supprimer mon compte » (RGPD).
+  - `stripe-webhook` : emplacement pour Stripe, pas déployé.
+  - Si l'appel à Claude échoue, les crédits sont rendus.
+- **La clé Anthropic** est le secret `ANTHROPIC_API_KEY` du projet Supabase. Elle n'est jamais dans ce dépôt. La clé `anon` dans `js/app.js` est publique par conception.
+- **Offres** (table `paliers`, modifiable sans toucher au code) : Gratuit 25 crédits par mois (Haiku 5.5) ; Essentiel 40, Plus 100, Max 250 crédits par semaine (Sonnet 5.5, Sonnet 5.5, Opus 5.5). Prix à fixer, Stripe pas encore activé.
+- **Consignes** : après un changement de `IA_SYSTEME`, `IA_SCHEMA`, `DC_BASE` ou `DC_MODES` dans `js/app.js`, lancer `node scripts/consignes.js` puis redéployer les fonctions.
+- **Mode « ma propre clé »** : toujours là, en option dans Paramètres.
+- **RGPD** : accord clair avant le premier envoi, écran « Mes données » (ce qui est gardé, journal, téléchargement, retirer l'accord, supprimer le compte).
+
 ## Fichiers
 
 - `index.html` : les écrans.
 - `css/notea.css` : le design system.
 - `js/app.js` : le moteur.
+- `supabase/` : le serveur (base et Edge Functions).
+- `scripts/consignes.js` : recopie la consigne de l'IA vers le serveur.
 - `lib/` : lecture des fichiers Word (mammoth) et PDF (pdf.js), avec leurs licences.
 
 Origine du code : dépôt `Larazdk/handicap`, dossier `ecoute` (Apprendre, version 66).

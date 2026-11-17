@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600..800&family=Nunito:wght@400..900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/notea.css?v=1.3">
+<link rel="stylesheet" href="css/notea.css?v=1.8">
 </head>
 <body>
 
@@ -576,11 +576,39 @@
         <div class="group"><label class="lab" for="exam">Date du partiel</label><input type="date" id="exam"><span class="muted">Pour toutes les matières sans date. Une date par matière se règle dans « Mon planning ».</span></div>
       </div>
     </div>
-    <div class="card" id="ia-card">
-      <h2>✨ L'IA de Notéa</h2>
-      <p>Avec une clé Claude, l'IA comprend tes cours : le plan, les notions expliquées simplement, et des questions qui vérifient que tu as compris. Elle sert aussi au prof particulier.</p>
+    <div class="card" id="compte-card">
+      <h2>✨ Mon compte Notéa</h2>
+      <p>Avec un compte, l'IA de Notéa comprend tes cours et sert de prof particulier. <b>Pas de clé à créer.</b> Tu as des crédits gratuits chaque mois.</p>
+      <div id="cpt-off">
+        <ol class="steps">
+          <li>Écris ton adresse e-mail.</li>
+          <li>Ouvre l'e-mail de Notéa et clique sur le lien. Pas de mot de passe.</li>
+        </ol>
+        <div class="row"><label for="cpt-mail"><b>Mon e-mail</b></label><input type="email" id="cpt-mail" placeholder="prenom@exemple.fr" autocomplete="email" style="flex:1 1 220px"><button id="cpt-lien" class="primary">Recevoir mon lien</button></div>
+        <p class="muted">Si tu as moins de 15 ans, demande d'abord à un parent.</p>
+      </div>
+      <div id="cpt-on" hidden>
+        <p id="cpt-qui"></p>
+        <p class="cpt-credits" id="cpt-credits" role="status"></p>
+        <div id="cpt-accord" class="msg warn" hidden>
+          <p><b>Avant d'utiliser l'IA, lis ceci.</b></p>
+          <ul>
+            <li>Quand tu demandes à l'IA, le texte de ton cours part sur internet : vers le serveur de Notéa (en Europe), puis vers Anthropic, l'entreprise qui fait l'IA Claude (aux États-Unis).</li>
+            <li>Notéa ne garde pas tes cours. Notéa garde seulement ton e-mail, tes crédits et la date de chaque demande.</li>
+            <li>Anthropic n'utilise pas tes cours pour entraîner son IA. Il peut les garder 30 jours au plus, pour la sécurité.</li>
+            <li>Tu peux retirer ton accord ou supprimer ton compte quand tu veux, dans « Mes données ».</li>
+          </ul>
+          <div class="row"><button id="cpt-ok" class="primary">J'ai compris, j'accepte</button></div>
+        </div>
+        <div class="row"><button data-tab="mesdonnees">Mes données</button><button id="cpt-sortir">Me déconnecter</button></div>
+      </div>
+      <div class="group" id="ia-voie-g" hidden><span class="lab">L'IA utilise</span><span class="seg2" id="ia-voie"><button data-v="compte">Mon compte Notéa</button><button data-v="cle">Ma propre clé</button></span></div>
+    </div>
+    <details class="card" id="ia-card">
+      <summary><b>Option : utiliser ma propre clé Claude</b></summary>
+      <p>Pour les experts. Tu paies toi-même l'IA sur ton compte Anthropic.</p>
       <ol class="steps">
-        <li>Crée un compte sur <b>platform.claude.com</b> et ajoute un petit crédit (5 $ suffisent pour beaucoup de cours).</li>
+        <li>Crée un compte sur <b>platform.claude.com</b> et ajoute un petit crédit.</li>
         <li>Dans <b>API keys</b>, crée une clé et copie-la.</li>
         <li>Colle-la ici, puis <b>Enregistrer</b> et <b>Tester ma clé</b>.</li>
       </ol>
@@ -588,15 +616,36 @@
       <div class="group"><span class="lab">Modèle</span><span class="seg2" id="ia-modele"><button data-m="claude-opus-5-5">Opus 5.5 · le meilleur</button><button data-m="claude-sonnet-5-5">Sonnet 5.5 · 2 fois moins cher</button><button data-m="claude-haiku-5-5">Haiku 5.5 · le moins cher</button></span></div>
       <p class="muted" id="ia-etat" role="status"></p>
       <p class="muted">Ta clé reste sur cet appareil et n'est envoyée qu'à Anthropic. Ne la partage pas. Mets une limite de dépense sur ton compte.</p>
-    </div>
+    </details>
     <div class="card">
       <h2>Mes données</h2>
-      <p class="muted">Tes cours et ta progression restent sur cet appareil. Rien n'est envoyé. Fais une sauvegarde pour changer d'appareil.</p>
-      <div class="row"><button id="data-out">Sauvegarder mes données</button>
-        <label class="btn" for="data-in" tabindex="0">Reprendre une sauvegarde</label><input type="file" id="data-in" accept=".json,application/json" hidden>
-        <button id="data-del" class="danger">Tout effacer</button></div>
+      <p class="muted">Ce qui est sur cet appareil, ce qui est en ligne, et comment tout effacer.</p>
+      <div class="row"><button data-tab="mesdonnees">Voir mes données</button></div>
     </div>
     <p class="muted">Notéa · Conçu pour les dys, utile à tous. · <span id="version"></span></p>
+  </section>
+
+  <!-- ===== Mes données (v1.8) ===== -->
+  <section id="tab-mesdonnees" class="stack" hidden>
+    <div class="card">
+      <h2>Sur cet appareil</h2>
+      <p class="muted">Tes cours, tes notions et ta progression restent sur cet appareil. Fais une sauvegarde pour changer d'appareil.</p>
+      <div class="row"><button id="data-out">Sauvegarder mes données</button>
+        <label class="btn" for="data-in" tabindex="0">Reprendre une sauvegarde</label><input type="file" id="data-in" accept=".json,application/json" hidden>
+        <button id="data-del" class="danger">Tout effacer sur cet appareil</button></div>
+    </div>
+    <div class="card">
+      <h2>En ligne, avec mon compte</h2>
+      <p id="md-off" class="muted">Tu n'es pas connecté. Rien de toi n'est en ligne sur cet appareil.</p>
+      <div id="md-on" hidden>
+        <p>Notéa garde seulement :</p>
+        <ul id="md-liste"></ul>
+        <p class="muted">Tes cours ne sont pas gardés. Ils passent par le serveur de Notéa (en Europe) et par Anthropic (aux États-Unis) le temps de la réponse. Anthropic peut les garder 30 jours au plus, pour la sécurité, et ne s'en sert pas pour entraîner son IA.</p>
+        <h3>Mes dernières demandes à l'IA</h3>
+        <div id="md-appels"></div>
+        <div class="row"><button id="md-export">Télécharger mes données en ligne</button><button id="md-retirer">Retirer mon accord</button><button id="md-suppr" class="danger">Supprimer mon compte</button></div>
+      </div>
+    </div>
   </section>
 </main>
 
@@ -612,18 +661,18 @@
 <datalist id="chap-list"></datalist>
 <div id="sheet"></div>
 <div class="ruler" id="ruler-t" hidden></div><div class="ruler" id="ruler-b" hidden></div>
-<script src="js/moteur/00-outils.js?v=1.7"></script>
-<script src="js/moteur/01-ingestion.js?v=1.7"></script>
-<script src="js/moteur/02-classification.js?v=1.7"></script>
-<script src="js/moteur/03-semantique.js?v=1.7"></script>
-<script src="js/moteur/04-pertinence.js?v=1.7"></script>
-<script src="js/moteur/05-graphe.js?v=1.7"></script>
-<script src="js/moteur/06-pedagogie.js?v=1.7"></script>
-<script src="js/moteur/07-eleve.js?v=1.7"></script>
-<script src="js/moteur/08-generation.js?v=1.7"></script>
-<script src="js/moteur/09-schemas.js?v=1.7"></script>
-<script src="js/moteur/10-adaptation.js?v=1.7"></script>
-<script src="js/moteur/11-pipeline.js?v=1.7"></script>
-<script src="js/app.js?v=1.7"></script>
+<script src="js/moteur/00-outils.js?v=1.8"></script>
+<script src="js/moteur/01-ingestion.js?v=1.8"></script>
+<script src="js/moteur/02-classification.js?v=1.8"></script>
+<script src="js/moteur/03-semantique.js?v=1.8"></script>
+<script src="js/moteur/04-pertinence.js?v=1.8"></script>
+<script src="js/moteur/05-graphe.js?v=1.8"></script>
+<script src="js/moteur/06-pedagogie.js?v=1.8"></script>
+<script src="js/moteur/07-eleve.js?v=1.8"></script>
+<script src="js/moteur/08-generation.js?v=1.8"></script>
+<script src="js/moteur/09-schemas.js?v=1.8"></script>
+<script src="js/moteur/10-adaptation.js?v=1.8"></script>
+<script src="js/moteur/11-pipeline.js?v=1.8"></script>
+<script src="js/app.js?v=1.8"></script>
 </body>
 </html>

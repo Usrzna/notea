@@ -1167,7 +1167,7 @@ let dc = {mode: "exp", turns: [], sys: ""};
 const dcKey = () => { try { return localStorage.getItem("notea-cle") || ""; } catch (e) { return ""; } };
 async function dcEngine() {
   let lm = "unavailable"; try { if (typeof LanguageModel !== "undefined") lm = await LanguageModel.availability({expectedInputs: [{type: "text", languages: ["fr"]}], expectedOutputs: [{type: "text", languages: ["fr"]}]}); } catch (e) {}
-  return dcKey() ? "api" : lm !== "unavailable" ? "builtin" : "copy";   // avec une clé, on prend Claude
+  return iaVoie() ? "api" : lm !== "unavailable" ? "builtin" : "copy";   // avec un compte ou une clé, on prend Claude
 }
 function bubble2(role, text) { const d = document.createElement("div"); d.className = "bub " + (role === "user" ? "moi" : "ia");
   const w = document.createElement("b"); w.className = "who"; w.textContent = role === "user" ? "Toi" : dc.mode === "enf" ? "Léo" : "Notéa"; const t = document.createElement("span"); t.textContent = text; d.append(w, t); $("dc-thread").append(d); $("dc-thread").scrollTop = 1e9; return t; }
@@ -1181,7 +1181,7 @@ async function dcAsk() {
       for await (const ch of sess.promptStreaming(dc.turns[dc.turns.length - 1].content, o)) { out = ch.startsWith(out) ? ch : out + ch; t.textContent = out; }
       dc.turns.push({role: "assistant", content: out});
     } else if (eng === "api") {
-      const r = await iaCall({system: dc.sys, messages: dc.turns, maxTokens: 4000, effort: "low"}), out = r.text.trim(); bubble2("assistant", out); dc.turns.push({role: "assistant", content: out});
+      const r = await iaCall({system: dc.sys, messages: dc.turns, maxTokens: 4000, effort: "low", serveur: {fn: "discuter", body: {mode: dc.mode, contexte: dc.ctx, messages: dc.turns}}}), out = r.text.trim(); bubble2("assistant", out); dc.turns.push({role: "assistant", content: out});
     } else {
       const text = dc.sys + "\n\n" + dc.turns.map(t => (t.role === "user" ? "Élève : " : "Toi : ") + t.content).join("\n\n");
       try { await navigator.clipboard.writeText(text); } catch (e) {}
@@ -1196,6 +1196,7 @@ function dcStart() {
   const m = $("dc-mat").value, ns = db.notions.filter(n => !m || matOf(n) === m).slice(0, 25);
   if (!ns.length) { note("Ajoute d'abord un cours dans « Mes cours ».", "warn"); return; }
   dc.turns = []; dc.notions = ns; $("dc-thread").replaceChildren(); $("dc-chat").hidden = false; $("dc-hard").hidden = true;
+  dc.ctx = ((m ? "Matière : " + m + "\n" : "") + ns.map(n => "- " + n.text).join("\n") + iaContexte(m) + moteurContexte(m)).slice(0, 20000);   // pour le serveur (il refuse au-delà)
   dc.sys = DC_BASE + " " + DC_MODES[dc.mode][1] + "\n\nLes notions du cours" + (m ? " de " + m : "") + " :\n" + ns.map(n => "- " + n.text).join("\n") + iaContexte(m) + moteurContexte(m);
   const first = dc.mode === "enf" ? "Bonjour ! Je suis prêt à t'expliquer mon cours." : dc.mode === "qst" ? "Pose-moi la première question." : "Explique-moi la première notion.";
   dc.turns.push({role: "user", content: first}); bubble2("user", first); dcAsk(); useTool("discu");
@@ -1242,7 +1243,7 @@ const TABS = {
   notions: ["Mes cours", "cours"], comprendre: ["Comprendre", "cours"], lecture: ["Lire et écouter", "cours"],
   notes: ["Mon carnet", "carnet"], cartes: ["Mes cartes", "carnet"], jeux: ["Quiz", "carnet"], trous: ["Questions à trous", "carnet"], blanche: ["Feuille blanche", "carnet"], carte: ["Carte mentale", "carnet"], examen: ["Examen blanc", "carnet"], carnet: ["Carnet de mots", "carnet"],
   discu: ["Prof particulier", "prof"],
-  acces: ["Accessibilité", "reglages"], reglages: ["Paramètres", "reglages"]
+  acces: ["Accessibilité", "reglages"], reglages: ["Paramètres", "reglages"], mesdonnees: ["Mes données", "reglages"]
 };
 const lastIn = {};
 function tab(name, fromNav) {
@@ -1261,7 +1262,7 @@ function tab(name, fromNav) {
   if (name === "notes") { renderList(); renderExams(); }
   if (name === "notions") { renderFolders(); const dl = $("mat-list"); dl.replaceChildren(); matsWithNotions().forEach(m => { const o = document.createElement("option"); o.value = m; dl.append(o); }); }
   if (name === "jour") { renderTiles(); renderToday(); }
-  if (name === "discu") { fillMats($("dc-mat")); dcEngine().then(e => { $("dc-chip").textContent = e === "builtin" ? "IA sur l'appareil" : e === "api" ? "IA : Claude (clé)" : "IA : via Claude.ai"; }); }
+  if (name === "discu") { fillMats($("dc-mat")); dcEngine().then(e => { $("dc-chip").textContent = e === "builtin" ? "IA sur l'appareil" : e === "api" ? (iaVoie() === "compte" ? "IA : mon compte Notéa" : "IA : Claude (clé)") : "IA : via Claude.ai"; }); }
   if (["blanche", "jeux", "trous", "cartes", "examen", "carte", "planning", "lecture", "carnet"].includes(name)) useTool(name);
   if (name === "blanche") { fbFill(); fbStart(); }
   if (name === "jeux") { fillMats($("jx-mat")); fillChapSel($("jx-chap"), $("jx-mat").value); }
@@ -1275,7 +1276,8 @@ function tab(name, fromNav) {
   if (name === "carnet") renderCarnet();
   if (name === "progres") renderProgres();
   if (name === "comprendre") renderComprendre();
-  if (name === "reglages") renderIAReglages();
+  if (name === "reglages") { renderIAReglages(); compteCharger(); }
+  if (name === "mesdonnees") renderMesDonnees();
   if (name === "discu") renderProf();
   if (name === "reglages") renderVac();
 }
@@ -1566,7 +1568,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.7";
+const VERSION = "1.8";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -1695,7 +1697,7 @@ function mastery(ns, now) { return ns.length ? Math.round(ns.reduce((s, n) => s 
 
 /* ---------- L'en-tête de chaque page : un retour clair, un titre, une phrase ---------- */
 const SUBS = {jour: "Aujourd'hui : un petit moment, rien de plus.", planning: "Tes cours, tes activités, et tes révisions placées toutes seules.", notions: "", notes: "Chaque notion avance toute seule quand tu la réussis.",
-  blanche: "Cahier fermé. Ce qui manque revient plus tard.", discu: "Il te pose les questions, tu réponds avec tes mots.", acces: "Ces réglages sont gratuits, pour toujours.", progres: "Ce que tu retiens. Jamais de reproche."};
+  blanche: "Cahier fermé. Ce qui manque revient plus tard.", discu: "Il te pose les questions, tu réponds avec tes mots.", acces: "Ces réglages sont gratuits, pour toujours.", mesdonnees: "Ce que Notéa garde, et comment tout effacer.", progres: "Ce que tu retiens. Jamais de reproche."};
 function pageHead(name) {
   const g = TABS[name][1], first = Object.keys(TABS).find(k => TABS[k][1] === g), b = $("back");
   b.hidden = name === "jour";
@@ -2540,7 +2542,12 @@ function iaErreur(e) {
   return e && e.message ? e.message : "Erreur inconnue.";
 }
 /* Un appel. Opus et Sonnet : si un filtre de sécurité refuse à tort, un autre modèle reprend (replis côté serveur). */
-async function iaCall({system, messages, maxTokens, format, effort, onText}) {
+async function iaCall({system, messages, maxTokens, format, effort, onText, serveur}) {
+  if (iaVoie() === "compte") {   // v1.8 : l'élève connecté passe par le serveur de Notéa, sans clé
+    if (!serveur) throw new Error("Cette fonction n'existe pas encore avec un compte Notéa.");
+    const j = await iaServeur(serveur.fn, serveur.body);
+    return {text: j.text || "", usage: null, model: j.modele, cout: j.cout, credits: j.credits};
+  }
   const client = await iaClient(), model = iaModel();
   const req = {model, max_tokens: maxTokens, system, messages, output_config: Object.assign({effort}, format ? {format} : {})};
   if (model !== "claude-haiku-5-5") { req.betas = ["server-side-fallback-2026-07-01"]; req.fallbacks = "default"; }
@@ -2591,14 +2598,14 @@ function iaSources() {
 function iaEstimation(text) { const inTok = Math.round(text.length / 3.5) + 1400, outTok = Math.min(16000, 2500 + Math.round(text.length / 6)); return {inTok, outTok, prix: iaPrix(iaModel(), inTok, outTok)}; }
 async function iaAnalyser(src, onProgress) {
   const t0 = Date.now(); let n = 0;
-  const r = await iaCall({system: IA_SYSTEME, maxTokens: 32000, effort: "medium", format: {type: "json_schema", schema: IA_SCHEMA},
+  const r = await iaCall({serveur: {fn: "comprendre", body: {mat: src.mat, texte: src.text}}, system: IA_SYSTEME, maxTokens: 32000, effort: "medium", format: {type: "json_schema", schema: IA_SCHEMA},
     messages: [{role: "user", content: `Matière : ${src.mat}\n\nVoici mes notes de cours :\n<cours>\n${src.text}\n</cours>`}],
     onText: d => { n += d.length; if (onProgress) onProgress(Math.round((Date.now() - t0) / 1000), n); }});
   let data; try { data = JSON.parse(r.text); } catch (e) { throw new Error("La réponse de l'IA est incomplète. Réessaie."); }
   data.questions = (data.questions || []).filter(q => q.choix && q.choix.length >= 3 && q.choix.filter(c => c.juste).length === 1)
     .map(q => Object.assign(q, {id: "ia" + uid()}));
-  const u = r.usage || {}, prix = iaPrix(iaModel(), (u.input_tokens || 0) + (u.cache_read_input_tokens || 0), u.output_tokens || 0);
-  db.ia[src.key] = {mat: src.mat, label: src.label, date: Date.now(), model: r.model, prix, data};
+  const u = r.usage || {}, prix = r.cout ? 0 : iaPrix(iaModel(), (u.input_tokens || 0) + (u.cache_read_input_tokens || 0), u.output_tokens || 0);
+  db.ia[src.key] = Object.assign({mat: src.mat, label: src.label, date: Date.now(), model: r.model, prix, data}, r.cout ? {cout: r.cout} : {});
   iaRanger(src.mat, data); save();
   return db.ia[src.key];
 }
@@ -2635,11 +2642,15 @@ function renderComprendre() {
   if (!srcs.length) { $("cp-vide").hidden = false; $("cp-card").hidden = true; $("cp-res").replaceChildren(); return; }
   $("cp-vide").hidden = true; $("cp-card").hidden = false;
   if (!cpSel || !srcs.some(x => x.key === cpSel)) cpSel = (srcs.find(x => db.ia[x.key]) || srcs[0]).key; s.value = cpSel;
-  const src = srcs.find(x => x.key === cpSel), a = db.ia[cpSel], est = iaEstimation(src.text), key = !!dcKey();
+  const src = srcs.find(x => x.key === cpSel), a = db.ia[cpSel], est = iaEstimation(src.text), voie = iaVoie();
+  const p = compte && compte.profil, bloque = voie === "compte" && p && !p.consentement_le;
   $("cp-go").textContent = a ? "Refaire l'analyse" : "✨ Comprendre ce cours avec l'IA";
-  $("cp-go").disabled = !key;
-  $("cp-info").textContent = !key ? "Pour utiliser l'IA, ajoute ta clé dans Paramètres → L'IA de Notéa." :
-    (a ? `Analysé le ${new Date(a.date).toLocaleDateString("fr-FR")} avec ${(IA_MODELES[a.model] || [a.model])[0]} (${fmtPrix(a.prix || 0)}). ` : "") + `Une analyse avec ${IA_MODELES[iaModel()][0]} coûte ${fmtPrix(est.prix)}. Elle est faite une seule fois, puis gardée sur ton appareil.`;
+  $("cp-go").disabled = !voie || bloque;
+  const deja = a ? `Analysé le ${new Date(a.date).toLocaleDateString("fr-FR")} avec ${(IA_MODELES[a.model] || [a.model])[0]} (${a.cout ? a.cout + " crédits" : fmtPrix(a.prix || 0)}). ` : "";
+  $("cp-info").textContent = !voie ? "Pour utiliser l'IA, connecte-toi dans Paramètres → Mon compte Notéa. C'est gratuit." :
+    bloque ? "Avant la première analyse, donne ton accord dans Paramètres → Mon compte Notéa." :
+    voie === "compte" ? deja + `Une analyse coûte ${COUT_ANALYSE} crédits${p ? `. Il t'en reste ${p.credits}` : ""}. Elle est faite une seule fois, puis gardée sur ton appareil.` :
+    deja + `Une analyse avec ${IA_MODELES[iaModel()][0]} coûte ${fmtPrix(est.prix)}. Elle est faite une seule fois, puis gardée sur ton appareil.`;
   $("cp-res").replaceChildren(a ? renderIA(a) : el("p", "muted", "Ce cours n'est pas encore analysé."));
 }
 function renderIA(a) {
@@ -2669,12 +2680,13 @@ function notionIA(n) {
 $("cp-src").addEventListener("change", () => { cpSel = $("cp-src").value; renderComprendre(); });
 $("cp-go").addEventListener("click", async () => {
   const src = iaSources().find(x => x.key === cpSel); if (!src) return;
-  if (src.text.length > 400000) { note("Ce cours est très long. Coupe-le en plusieurs cours avant de l'analyser.", "warn"); return; }
+  if (src.text.length > (iaVoie() === "compte" ? TEXTE_MAX_COMPTE : 400000)) { note("Ce cours est très long. Coupe-le en plusieurs cours avant de l'analyser.", "warn"); return; }
   const b = $("cp-go"); b.disabled = true; $("cp-info").textContent = "L'IA lit ton cours… (de 20 secondes à 2 minutes)";
-  try { const a = await iaAnalyser(src, (sec, n) => { $("cp-info").textContent = `L'IA lit et organise ton cours… ${sec} s`; });
-    note(`Cours compris : ${a.data.plan.length} parties, ${a.data.notions.length} notions, ${a.data.questions.length} questions de quiz (${fmtPrix(a.prix)}).`, "ok"); }
+  const t0 = Date.now(), tic = setInterval(() => { $("cp-info").textContent = `L'IA lit et organise ton cours… ${Math.round((Date.now() - t0) / 1000)} s`; }, 1000);
+  try { const a = await iaAnalyser(src);
+    note(`Cours compris : ${a.data.plan.length} parties, ${a.data.notions.length} notions, ${a.data.questions.length} questions de quiz (${a.cout ? a.cout + " crédits" : fmtPrix(a.prix)}).`, "ok"); }
   catch (e) { note(iaErreur(e), "err"); }
-  b.disabled = false; renderComprendre();
+  clearInterval(tic); b.disabled = false; renderComprendre();
 });
 
 /* ---------- Paramètres : la clé et le modèle ---------- */
@@ -2704,6 +2716,138 @@ function iaContexte(m) {
     (a.data.notions || []).slice(0, 30).map(n => `- ${n.terme} (${n.partie}) : ${n.definition}`).join("\n")).join("");
 }
 Object.assign(SUBS, {comprendre: "Le plan de ton cours et ses notions, expliqués simplement."});
+
+/* =====================================================================
+   Version 1.8 : le compte Notéa. L'IA marche sans clé : le serveur de Notéa (Supabase) la garde.
+   - Connexion par lien magique envoyé par e-mail (Supabase Auth).
+   - Les crédits sont comptés sur le serveur (table profils) ; chaque élève ne lit que sa ligne.
+   - Les cours passent par le serveur le temps de la réponse, ils ne sont pas gardés.
+   - La clé publique ci-dessous est faite pour être dans l'appli : la sécurité vient de la RLS.
+     La clé Anthropic, elle, n'est jamais ici : c'est un secret du serveur.
+   ===================================================================== */
+var SB_URL = "https://eqqglkglcegtxqaawfee.supabase.co";
+var SB_CLE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxcWdsa2dsY2VndHhxYWF3ZmVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5Mjc3ODcsImV4cCI6MjExMDUwMzc4N30.wryWxS-e2kDGwAXYaUouVo-YHw_YADkXnwk4fKZUbCg";
+var SB_SDK = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
+var SB_STOCK = "sb-eqqglkglcegtxqaawfee-auth-token";
+var COUT_ANALYSE = 5, COUT_MESSAGE = 1, TEXTE_MAX_COMPTE = 120000;   // les mêmes que sur le serveur
+var sbC = null, compte = null;   // compte = {email, profil} quand l'élève est connecté
+
+async function sbClient() {
+  if (sbC) return sbC;
+  const M = await import(SB_SDK);
+  sbC = M.createClient(SB_URL, SB_CLE, {auth: {persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "implicit"}});
+  sbC.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT") setTimeout(() => { compte = null; renderCompte(); }, 0); });
+  return sbC;
+}
+const aUneSession = () => { try { return !!localStorage.getItem(SB_STOCK); } catch (e) { return false; } };
+
+/** La voie de l'IA : "compte" (serveur de Notéa), "cle" (clé de l'élève) ou "" (rien). */
+function iaVoie() {
+  const v = lsGet("notea-voie", "compte");
+  if (compte && (v === "compte" || !dcKey())) return "compte";
+  return dcKey() ? "cle" : "";
+}
+
+async function compteCharger() {
+  if (!sbC && !aUneSession()) { renderCompte(); return; }
+  try {
+    const c = await sbClient(), {data: {session}} = await c.auth.getSession();
+    if (!session) { compte = null; renderCompte(); return; }
+    const {data, error} = await c.rpc("mon_profil");
+    compte = {email: session.user.email, profil: error ? null : data};
+  } catch (e) { /* hors ligne : on garde ce qu'on sait */ }
+  renderCompte();
+}
+
+/** Un appel au serveur de Notéa. Le jeton de l'élève prouve qui il est. */
+async function iaServeur(fn, body) {
+  const c = await sbClient(), {data: {session}} = await c.auth.getSession();
+  if (!session) throw new Error("Connecte-toi d'abord (Paramètres → Mon compte Notéa).");
+  let r; try { r = await fetch(SB_URL + "/functions/v1/" + fn, {method: "POST", headers: {"Content-Type": "application/json", "Authorization": "Bearer " + session.access_token, "apikey": SB_CLE}, body: JSON.stringify(body)}); }
+  catch (e) { throw new Error("Pas de connexion à internet."); }
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  if (compte && compte.profil && typeof j.credits === "number") { compte.profil.credits = j.credits; renderCompte(); }
+  if (!r.ok) {
+    if (j.statut === "plus_de_credits") throw new Error("Tu n'as plus assez de crédits. Ils reviennent le " + jourFr(j.recharge_le) + ".");
+    throw new Error(j.erreur || j.message || "Le serveur de Notéa n'a pas répondu. Réessaie.");
+  }
+  return j;
+}
+const jourFr = d => d ? new Date(d).toLocaleDateString("fr-FR", {day: "numeric", month: "long"}) : "bientôt";
+
+function renderCompte() {
+  const on = !!compte, p = on && compte.profil;
+  $("cpt-off").hidden = on; $("cpt-on").hidden = !on;
+  if (on) {
+    $("cpt-qui").textContent = "Connecté avec " + compte.email + ".";
+    $("cpt-credits").textContent = p ? `🪙 ${p.credits} crédit${p.credits > 1 ? "s" : ""} sur ${p.credits_palier} · offre ${p.palier_nom} · recharge le ${jourFr(p.recharge_le)}. Une analyse de cours = ${COUT_ANALYSE} crédits, une réponse du prof = ${COUT_MESSAGE} crédit.` : "Je n'arrive pas à lire tes crédits. Réessaie plus tard.";
+    $("cpt-accord").hidden = !p || !!p.consentement_le;
+  }
+  $("ia-voie-g").hidden = !(on && dcKey());
+  document.querySelectorAll("#ia-voie button").forEach(b => b.classList.toggle("on", b.dataset.v === iaVoie()));
+  if (!$("tab-comprendre").hidden) renderComprendre();
+  if (!$("tab-mesdonnees").hidden) renderMesDonnees();
+}
+
+$("cpt-lien").addEventListener("click", async () => {
+  const mail = $("cpt-mail").value.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) { note("Cette adresse e-mail ne semble pas complète.", "warn"); return; }
+  const b = $("cpt-lien"); b.disabled = true;
+  try {
+    const c = await sbClient();
+    const {error} = await c.auth.signInWithOtp({email: mail, options: {emailRedirectTo: location.origin + location.pathname, shouldCreateUser: true}});
+    if (error) throw error;
+    note("C'est envoyé ! Ouvre l'e-mail de Notéa et clique sur le lien.", "ok");
+  } catch (e) { note(/rate|seconds/i.test(e.message || "") ? "Attends une minute avant de redemander un lien." : "Le lien n'a pas pu partir. Réessaie.", "err"); }
+  b.disabled = false;
+});
+$("cpt-ok").addEventListener("click", async () => {
+  try { const c = await sbClient(), {error} = await c.rpc("donner_consentement", {oui: true}); if (error) throw error; note("Merci. L'IA est prête.", "ok"); }
+  catch (e) { note("Ton accord n'a pas pu être enregistré. Réessaie.", "err"); }
+  compteCharger();
+});
+$("cpt-sortir").addEventListener("click", async () => { try { await (await sbClient()).auth.signOut(); } catch (e) {} compte = null; renderCompte(); note("Tu es déconnecté.", "ok"); });
+document.querySelectorAll("#ia-voie button").forEach(b => b.addEventListener("click", () => { lsSet("notea-voie", b.dataset.v); renderCompte(); }));
+
+/* ---------- Mes données ---------- */
+async function renderMesDonnees() {
+  const on = !!compte, p = on && compte.profil;
+  $("md-off").hidden = on; $("md-on").hidden = !on; if (!on) return;
+  const li = t => el("li", "", t);
+  $("md-liste").replaceChildren(li("Ton e-mail : " + compte.email + " (pour te connecter)."),
+    li(p ? `Tes crédits : ${p.credits}, offre ${p.palier_nom}.` : "Tes crédits."),
+    li(p && p.consentement_le ? "Ton accord pour l'IA, donné le " + new Date(p.consentement_le).toLocaleDateString("fr-FR") + "." : "Tu n'as pas donné ton accord pour l'IA."),
+    li("Pour chaque demande à l'IA : la date, le type (cours ou prof), le modèle, les crédits et la taille (en jetons). Pas le texte."));
+  const box = $("md-appels"); box.replaceChildren(el("p", "muted", "Chargement…"));
+  try {
+    const c = await sbClient(), {data, error} = await c.from("appels").select("le, fonction, modele, credits, ok").order("le", {ascending: false}).limit(20);
+    if (error) throw error;
+    box.replaceChildren(data.length ? el("ul", "") : el("p", "muted", "Aucune demande pour l'instant."));
+    data.forEach(a => box.firstChild.append(li(`${new Date(a.le).toLocaleString("fr-FR", {dateStyle: "short", timeStyle: "short"})} · ${a.fonction === "comprendre" ? "Comprendre un cours" : "Prof particulier"} · ${a.ok === false ? "échec, crédits rendus" : a.credits + " crédit" + (a.credits > 1 ? "s" : "")}`)));
+  } catch (e) { box.replaceChildren(el("p", "muted", "Je n'arrive pas à lire tes demandes. Réessaie plus tard.")); }
+}
+$("md-export").addEventListener("click", async () => {
+  try {
+    const c = await sbClient(), {data: profil} = await c.rpc("mon_profil"), {data: appels} = await c.from("appels").select("*").order("le", {ascending: false});
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify({email: compte.email, profil, appels}, null, 2)], {type: "application/json"}));
+    a.download = "notea-mes-donnees-en-ligne-" + today() + ".json"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  } catch (e) { note("Le téléchargement n'a pas marché. Réessaie.", "err"); }
+});
+$("md-retirer").addEventListener("click", async () => {
+  if (!confirm("Retirer ton accord ? L'IA de ton compte ne marchera plus jusqu'à ce que tu le redonnes.")) return;
+  try { const c = await sbClient(), {error} = await c.rpc("donner_consentement", {oui: false}); if (error) throw error; note("Accord retiré.", "ok"); } catch (e) { note("Ça n'a pas marché. Réessaie.", "err"); }
+  compteCharger();
+});
+$("md-suppr").addEventListener("click", async () => {
+  if (!confirm("Supprimer ton compte Notéa ? Ton e-mail, tes crédits et ton journal seront effacés. C'est définitif. Tes cours sur cet appareil restent.")) return;
+  try { await iaServeur("supprimer-compte", {}); try { await sbC.auth.signOut(); } catch (e) {} compte = null; renderCompte(); note("Ton compte est supprimé.", "ok"); }
+  catch (e) { note(e.message || "La suppression n'a pas marché. Réessaie.", "err"); }
+});
+
+/* Au démarrage : retour du lien magique, ou session déjà ouverte. */
+if (/error_description=/.test(location.hash)) { note("Ce lien ne marche plus. Demande un nouveau lien dans Paramètres.", "err"); try { history.replaceState(null, "", location.pathname + "#reglages"); } catch (e) {} }
+if (/access_token=/.test(location.hash)) compteCharger().then(() => { if (compte) { note("Tu es connecté. Bienvenue !", "ok"); tab("reglages"); } });
+else if (aUneSession()) compteCharger(); else renderCompte();
 
 /* ---------- Le bouton « retour » du navigateur marche, et la page ouverte est gardée ---------- */
 window.addEventListener("popstate", () => tab(TABS[location.hash.slice(1)] ? location.hash.slice(1) : "jour", true));
