@@ -121,7 +121,7 @@ function todayQueue(now = Date.now()) {
     .slice(0, Math.max(0, newQuota(now) - db.newToday));
   const out = []; let t = 0;
   for (const n of due.concat(fresh)) { if ((t + secFor(n) > budget && out.length >= 3) || out.length >= cap) break; out.push(n); t += secFor(n); }
-  return mixMQ(interleave(out), now);
+  return espacer(mixMQ(ordreMalin(out, now), now));
 }
 function renderToday() {
   const q = todayQueue(), n = q.length; homeStats(q); renderExamToday();
@@ -188,7 +188,7 @@ function grade(g) {
   if (!n.last) { if (n.enonce) (db.mqNew = db.mqNew || {day: today(), n: 0}).n++; else db.newToday++; }
   schedule(n, g, Date.now()); if (n.enonce) { moteurNote(n, n._score != null ? n._score : g === 1 ? 0 : g === 2 ? 0.75 : 1); delete n._score; } stats[g]++; save();
   if (onceToday("n" + n.id)) gain(n.reps === 1 ? 3 : 2, "révision");
-  if (g === 1 && queue.slice(idx + 1).filter(x => x === n).length === 0) queue.push(n);   // « Raté » : elle revient à la fin
+  if (g === 1 && queue.slice(idx + 1).filter(x => x === n).length === 0) remettre(queue, idx, n);   // « Raté » : elle revient plus tard, pas tout de suite
   else done++;
   idx++;
   if (idx >= queue.length) endSession(); else showCard();
@@ -872,7 +872,7 @@ function pool() { const m = $("tr-mat").value; return db.notions.filter(n => (!m
 function quizStart() {
   const now = Date.now(), p = pool().sort((a, b) => ((a.last ? a.due : 0) <= now ? 0 : 1) - ((b.last ? b.due : 0) <= now ? 0 : 1) || Math.random() - .5);
   if (p.length < 1 || db.notions.filter(n => answerOf(n)).length < 4) { note("Il faut au moins 4 notions pour les questions à trous.", "warn"); return; }
-  qz = {list: p.slice(0, 10), i: 0, ok: 0, last: "", cur: null}; $("tr-end").hidden = true; $("qz").hidden = false; quizShow();
+  qz = {list: ordreMalin(p.slice(0, 10)), i: 0, ok: 0, last: "", cur: null}; $("tr-end").hidden = true; $("qz").hidden = false; quizShow();
 }
 function quizShow() {
   const n = qz.list[qz.i], ty = qTypes(n); let t = ty[Math.floor(Math.random() * ty.length)];
@@ -1568,7 +1568,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.11";
+const VERSION = "1.12";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -1962,12 +1962,12 @@ function cqBuild(items, nb) {
   const cols = [...by.values()], order = []; for (let i = 0; order.length < items.length; i++) cols.forEach(c => { if (c[i]) order.push(c[i]); });
   const out = [], cnt = {}, seenG = new Set(), famN = {}, later = [], cap = Math.max(2, Math.ceil(nb / 4)); let last = "";
   for (const x of order) { if (out.length >= nb) break;
-    const sc = t => (cnt[t] || 0) * 2 + PREF[db.niv].indexOf(t) * 0.5 + (t === last ? 5 : 0) + Math.random() * 0.3;
+    const sc = t => (cnt[t] || 0) * 2 + PREF[db.niv].indexOf(t) * 0.5 + (t === last ? 5 : 0) + monte(x, t) + Math.random() * 0.3;
     for (const t of qPlan(x).sort((a, b) => sc(a) - sc(b))) { const q = makeQ(x, t, k); if (!q || seenG.has(famKey(q))) continue; const fk = famKey(q).split("|")[0];
       if ((famN[fk] || 0) >= cap) { later.push(q); break; }   // pas plus de 3 questions du même genre : on varie
       seenG.add(famKey(q)); famN[fk] = (famN[fk] || 0) + 1; out.push(q); cnt[t] = (cnt[t] || 0) + 1; last = t; break; } }
   for (const q of later) { if (out.length >= nb) break; if (!seenG.has(famKey(q))) { seenG.add(famKey(q)); out.push(q); } }
-  return out;
+  return ordreMalin(out);
 }
 
 /* ---------- Le Quiz : une carte qui se retourne ---------- */
@@ -2150,7 +2150,7 @@ function edApply(n) {
 /* ---------- Mes cartes : recto, verso, rangées par chapitre, révisées avec le même algorithme ---------- */
 let caEdit = null, cr = null;
 const caSel = () => db.cards.filter(c => (!$("ca-mat").value || matOf(c) === $("ca-mat").value) && (!$("ca-chap").value || chapOf(c) === $("ca-chap").value));
-function caDue(list) { const end = new Date(); end.setHours(23, 59, 59, 999); return list.filter(c => !c.last || c.due <= end.getTime()); }
+function caDue(list) { const end = new Date(); end.setHours(23, 59, 59, 999); return list.filter(c => (!c.last || c.due <= end.getTime()) && inverseOk(c)); }
 function renderCartes() {
   fillMats($("ca-mat")); fillChapSel($("ca-chap"), $("ca-mat").value); fillDL();
   const list = caSel(), due = caDue(list), box = $("ca-list"); box.replaceChildren();
@@ -2197,7 +2197,7 @@ $("lec-carte").addEventListener("click", () => { const it = lec.sel; if (!it) re
 
 /* La révision des cartes : recto, on retourne, on dit si on s'en souvenait */
 function crStart() {
-  const due = interleave(caDue(caSel())).slice(0, DAY_MAX); if (!due.length) { note("Aucune carte à revoir aujourd'hui.", "ok"); return; }
+  const due = ordreMalin(caDue(caSel())).slice(0, DAY_MAX); if (!due.length) { note("Aucune carte à revoir aujourd'hui.", "ok"); return; }
   cr = {list: due, i: 0, n: {1: 0, 2: 0, 3: 0}}; $("ca-run").hidden = false; $("ca-list-card").hidden = true; $("ca-form").hidden = true; $("ca-top").hidden = true; crShow();
 }
 function crShow() {
@@ -2210,7 +2210,7 @@ function crShow() {
 function crTurn() { cr.turned = true; flipTo("cr-flip", true); document.querySelector("#cr-b .g2").focus(); }
 function crGrade(g) {
   if (!cr || !cr.turned) return; const c = cr.list[cr.i]; schedule(c, g, Date.now()); cr.n[g]++;
-  if (g === 1 && cr.list.filter(x => x === c).length < 3 && !cr.list.slice(cr.i + 1).includes(c)) cr.list.push(c);
+  if (g === 1 && cr.list.filter(x => x === c).length < 3 && !cr.list.slice(cr.i + 1).includes(c)) remettre(cr.list, cr.i, c);
   save(); if (onceToday("ca" + c.id)) gain(2, "carte"); cr.i++;
   if (cr.i >= cr.list.length) crEnd(); else crShow();
 }
@@ -2953,7 +2953,7 @@ $("fc-add").addEventListener("click", fcEnregistrer);
 $("fc-bulk-go").addEventListener("click", () => {
   const p = ficheLignes($("fc-bulk").value);
   if (!p.length) { note("Écris une fiche par ligne, par exemple : qualitative ; petit échantillon, on recherche le pourquoi", "warn"); $("fc-bulk").focus(); return; }
-  const added = p.map(([r, v]) => fcAjouter(r, v, "", ""));
+  const added = p.map(([r, v], i) => { const a = fcAjouter(r, v, "", ""); a[0].created += i; a[1].forEach(c => { c.created += i; }); return a; });   // garder l'ordre du cours
   save(); renderToday(); fillDL(); $("fc-bulk").value = ""; renderFiches();
   fcDone(`${added.length} fiche${added.length > 1 ? "s" : ""} ajoutée${added.length > 1 ? "s" : ""}.`);
   noteUndo(`${added.length} fiches ajoutées.`, () => { const ns = added.map(a => a[0]), cs = added.flatMap(a => a[1]); db.notions = db.notions.filter(x => !ns.includes(x)); db.cards = db.cards.filter(c => !cs.includes(c)); save(); renderToday(); renderFiches(); fcDone(""); });
@@ -3043,6 +3043,63 @@ function brancherMenu(b, m) {
   ["touchend", "touchmove", "touchcancel"].forEach(k => b.addEventListener(k, stop));
   b.addEventListener("click", e => { if (b.dataset.long) { e.stopImmediatePropagation(); delete b.dataset.long; } }, true);
   b.addEventListener("keydown", e => { if (e.key === "Delete" || (e.shiftKey && e.key === "F10") || e.key === "ContextMenu") { e.preventDefault(); const r = b.getBoundingClientRect(); menuDossier(m, r.left + 20, r.top + 20); } });
+}
+
+
+/* ---------- Version 1.12 : l'ordre des questions oblige le cerveau à chercher ----------
+   1re fois : l'ordre du cours. Ensuite : les notions les plus difficiles d'abord, puis le reste mélangé.
+   Jamais deux questions sur la même notion trop près l'une de l'autre (pas le recto puis le verso juste après). */
+function espaceMin() { return 3; }                       // au moins 3 autres questions entre deux questions sur la même notion
+function famille(x) {
+  const y = x && x.x ? x.x : x; if (!y) return "";
+  if (y.mq) return "mq:" + (y.mq.nid || y.mq.noeud || y.mq.id);
+  if (y.iq) return "ia:" + nk(y.iq.notion || y.iq.question || "");
+  if (y.enonce) return "mq:" + (y.nid || y.noeud || y.id);
+  return "n:" + (y.nid || y.eid || y.id);
+}
+function difficulte(x, now) {
+  const y = x && x.x ? x.x : x, z = y.qz || {};
+  return (y.lapses || 0) * 2 + Math.max(0, (y.D || 5) - 5) + (y.last ? (1 - retr(y, now)) * 3 : 0)
+    + Math.max(0, (z.n || 0) - (z.ok || 0)) * 1.5 + (y.mark === "dif" || y.mark === "rate" ? 1 : 0);
+}
+function dejaVu(x) { const y = x && x.x ? x.x : x; return !!(y.last || (y.qz && y.qz.n)); }
+/* Remettre de l'espace : on garde l'ordre voulu, mais une notion ne revient pas avant 3 autres questions. */
+function espacer(list) {
+  const pool = list.slice(), out = [], k = espaceMin();
+  while (pool.length) {
+    const recent = new Set(out.slice(-k).map(famille));
+    let i = pool.findIndex(x => !recent.has(famille(x))); if (i < 0) i = 0;
+    out.push(pool.splice(i, 1)[0]);
+  }
+  return out;
+}
+function ordreMalin(list, now = Date.now()) {
+  if (list.length < 2) return list.slice();
+  const cree = x => (x && x.x ? x.x : x).created || 0;
+  const neufs = list.filter(x => !dejaVu(x)).sort((a, b) => cree(a) - cree(b));          // jamais vues : dans l'ordre du cours
+  const vus = list.filter(dejaVu).map(x => [x, difficulte(x, now) + Math.random() * 1.5]);
+  const durs = vus.filter(p => p[1] >= 2.5).sort((a, b) => b[1] - a[1]).map(p => p[0]);   // les plus dures d'abord
+  const autres = shuffle(vus.filter(p => p[1] < 2.5).map(p => p[0]));                      // le reste, mélangé
+  // les nouvelles se glissent entre les anciennes, pour ne pas enchaîner que du facile ou que du nouveau
+  const out = durs.slice(), mix = autres.slice(); neufs.forEach((n, i) => mix.splice(Math.min(mix.length, Math.round((i + 1) * (mix.length + 1) / (neufs.length + 1)) + i), 0, n));
+  return espacer(out.concat(mix));
+}
+/* Une question ratée revient plus tard dans la séance, jamais juste après. */
+function remettre(list, i, x) {
+  const pos = Math.min(list.length, i + 1 + espaceMin() + Math.floor(Math.random() * 3));
+  list.splice(pos, 0, x);
+}
+/* La carte dans l'autre sens ne vient qu'après avoir vu le recto un autre jour. */
+function inverseOk(c) {
+  if (!c.inv) return true; const s = db.cards.find(x => x.nid === c.nid && !x.inv); if (!s) return true;
+  const d = new Date(); d.setHours(0, 0, 0, 0); return !!s.last && s.last < d.getTime();
+}
+/* La difficulté monte : une notion nouvelle commence par la question simple (recto),
+   une notion déjà réussie passe aux questions plus dures (retrouver le mot, l'exemple, associer). */
+function monte(x, t) {
+  const facile = t === "def" || t === "affirm" || t === "carte", z = x.qz || {};
+  const maitrise = (z.ok || 0) >= 2 || (x.reps || 0) >= 3, neuf = !(z.n) && !x.last;
+  return facile ? (maitrise ? 2.5 : neuf ? -1.5 : 0) : (maitrise ? -0.5 : neuf ? 3 : 0);
 }
 
 /* ---------- Le bouton « retour » du navigateur marche, et la page ouverte est gardée ---------- */
