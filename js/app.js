@@ -1568,7 +1568,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.8";
+const VERSION = "1.9";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -2707,7 +2707,7 @@ renderIAReglages();
 /* Le quiz : les questions de l'IA d'abord ; pour une matière analysée, plus de questions automatiques sur ses notions. */
 function cqItems(m, ch) {
   const iaMats = new Set(iaAnalyses("").map(a => a.mat));
-  return iaItems(m, ch).concat(cqItemsBase(m, ch).filter(x => !(x.mq || x.text) || !iaMats.has(matOf(x))));
+  return iaItems(m, ch).concat(cqItemsBase(m, ch).filter(x => !(x.mq || x.text) || x.fiche || !iaMats.has(matOf(x))));   // les fiches de l'élève restent toujours
 }
 /* Le prof particulier connaît le plan et les notions expliquées. */
 function iaContexte(m) {
@@ -2848,6 +2848,117 @@ $("md-suppr").addEventListener("click", async () => {
 if (/error_description=/.test(location.hash)) { note("Ce lien ne marche plus. Demande un nouveau lien dans Paramètres.", "err"); try { history.replaceState(null, "", location.pathname + "#reglages"); } catch (e) {} }
 if (/access_token=/.test(location.hash)) compteCharger().then(() => { if (compte) { note("Tu es connecté. Bienvenue !", "ok"); tab("reglages"); } });
 else if (aUneSession()) compteCharger(); else renderCompte();
+
+
+/* ---------- Version 1.9 : créer mes fiches (recto, verso), elles vont dans tous les outils ---------- */
+Object.assign(KLAB, {q: "Question"});
+Object.assign(KFIELDS, {q: ["La question", "La réponse"]});
+Object.assign(DEFQ, {q: t => t});
+Object.assign(TERMQ, {q: "À quelle question répond cette réponse ?"});
+Object.assign(KG, {q: "q"});
+if (!KINDS.some(k => k[0] === "q")) KINDS.push(["q", "Question"]);
+
+/* Le recto finit par « ? » : c'est une question. Sinon c'est un mot et sa définition. */
+function ficheKind(recto) { return /\?\s*$/.test(recto) ? "q" : "def"; }
+/* Une fiche = une notion écrite par l'élève. Pour une question, les trous sont dans la réponse. */
+function ficheNotion(o) {
+  const kind = o.kind || ficheKind(o.term);
+  if (kind !== "q") { const n = manualNotion(Object.assign({}, o, {kind})); n.fiche = true; return n; }
+  const head = o.term + " — ", text = head + o.def, n = makeNotion(text, "manuel", o.mat + " · " + new Date().toLocaleDateString("fr-FR"));
+  const at = s => { const p = []; let c = 0; tokens(s).forEach(w => { p.push(c); c += w.length; }); return p; };
+  const pt = at(text), pd = at(o.def), tt = tokens(text);
+  let holes = autoHoles(o.def).map(i => pt.indexOf(head.length + pd[i])).filter(i => i >= 0);
+  if (!holes.length) { const i = tt.findIndex((w, j) => pt[j] >= head.length && clean(w).length >= 3 && !STOP.has(clean(w))); if (i >= 0) holes = [i]; }
+  Object.assign(n, {mat: o.mat, chap: o.chap || "", term: o.term, def: o.def, kind, holes, fiche: true});
+  if (o.ex) n.ex = o.ex; if (o.why) n.why = o.why; return n;
+}
+/* La carte dans l'autre sens : on montre la réponse, on retrouve le mot ou la question. */
+function ficheCarteInverse(n) {
+  let back = n.term; if (n.why) back += "\n" + n.why;
+  return newCard({nid: n.id, inv: true, front: n.def + "\n\n" + (TERMQ[kindOf(n)] || TERMQ.def), back, mat: matOf(n), chap: chapOf(n)});
+}
+function ficheCartes(n, inv) { const c = [notionCard(n)]; if (inv) c.push(ficheCarteInverse(n)); return c; }
+
+/* Coller plusieurs fiches : une par ligne, recto et verso séparés par une tabulation, « ; », « = », « : » ou un tiret. */
+function ficheLignes(txt) {
+  return txt.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
+    let m = l.split("\t"); if (m.length >= 2) return [m[0], m.slice(1).join(" ")];
+    for (const sep of [/\s*;\s*/, /\s+=\s+/, /\s+[-–—]\s+/, /\s*:\s+/]) { const i = l.search(sep); if (i > 0) { const s = l.match(sep)[0]; return [l.slice(0, i), l.slice(i + s.length)]; } }
+    if (/\?/.test(l)) { const i = l.indexOf("?") + 1; if (l.slice(i).trim()) return [l.slice(0, i), l.slice(i)]; }
+    return null;
+  }).filter(p => p && p[0].trim() && p[1].trim()).map(p => [p[0].trim(), p[1].trim().replace(/^[:;=\-–—]\s*/, "")]);
+}
+
+let fcEdit = null;
+const fcMat = () => $("fc-mat").value.trim() || "Mes cours";
+const fcChap = () => $("fc-chap").value.trim();
+function fcDone(t) { $("fc-done").textContent = t; }
+function fcAjouter(recto, verso, ex, why) {
+  const n = ficheNotion({term: recto, def: verso, ex, why, mat: fcMat(), chap: fcChap()});
+  const cs = ficheCartes(n, $("fc-inv").checked); db.notions.push(n); db.cards.push(...cs); return [n, cs];
+}
+function fcVider() { ["fc-recto", "fc-verso", "fc-ex", "fc-why"].forEach(id => { $(id).value = ""; }); fcEdit = null; $("fc-add").textContent = "Ajouter la fiche"; $("fc-recto").focus(); }
+function fcEnregistrer() {
+  const recto = $("fc-recto").value.trim(), verso = $("fc-verso").value.trim();
+  if (!recto || !verso) { note("Écris le recto (le mot ou la question) et le verso (la réponse).", "warn"); (recto ? $("fc-verso") : $("fc-recto")).focus(); return; }
+  const ex = $("fc-ex").value.trim(), why = $("fc-why").value.trim();
+  if (fcEdit) {
+    const n = fcEdit, m = ficheNotion({term: recto, def: verso, ex, why, mat: fcMat(), chap: fcChap()});
+    Object.assign(n, {text: m.text, term: m.term, def: m.def, kind: m.kind, holes: m.holes, mat: m.mat, chap: m.chap, fiche: true});
+    if (ex) n.ex = ex; else delete n.ex; if (why) n.why = why; else delete n.why;
+    const old = db.cards.filter(c => c.nid === n.id), inv = $("fc-inv").checked, neuf = ficheCartes(n, inv);
+    neuf.forEach(c => { const o = old.find(x => !!x.inv === !!c.inv); if (o) Object.assign(o, {front: c.front, back: c.back, mat: c.mat, chap: c.chap}); else db.cards.push(c); });
+    if (!inv) db.cards = db.cards.filter(c => !(c.nid === n.id && c.inv));
+    save(); renderToday(); fillDL(); fcDone(`Fiche « ${recto} » modifiée.`); fcVider(); renderFiches(); return;
+  }
+  const [n, cs] = fcAjouter(recto, verso, ex, why);
+  save(); renderToday(); fillDL(); fcVider(); renderFiches();
+  fcDone(`Fiche « ${recto} » ajoutée. Elle arrive dans ta révision du jour, tes quiz, tes trous et tes cartes.`);
+  noteUndo(`Fiche « ${recto} » ajoutée.`, () => { db.notions = db.notions.filter(x => x !== n); db.cards = db.cards.filter(c => !cs.includes(c)); save(); renderToday(); renderFiches(); fcDone(""); });
+}
+function renderFiches() {
+  const box = $("fc-list"), m = fcMat(), ch = fcChap();
+  const list = db.notions.filter(n => n.fiche && matOf(n) === m && (!ch || chapOf(n) === ch)).sort((a, b) => b.created - a.created);
+  box.replaceChildren(); $("fc-rev").hidden = !list.length;
+  if (!list.length) { box.append(el("p", "muted", `Pas encore de fiche en ${m}${ch ? " · " + ch : ""}.`)); return; }
+  box.append(el("p", "muted", `${list.length} fiche${list.length > 1 ? "s" : ""} en ${m}${ch ? " · " + ch : ""} :`));
+  list.forEach(n => {
+    const r = el("div", "fc-row"), t = el("div", "fc-txt");
+    t.append(el("p", "fc-r", n.term), el("p", "fc-v", n.def));
+    const tag = el("span", "chip", (KLAB[kindOf(n)] || "Fiche") + (chapOf(n) && !ch ? " · " + chapOf(n) : "")); t.append(tag);
+    const a = el("div", "row"), b1 = el("button", "", "Modifier"), b2 = el("button", "", "Supprimer");
+    b1.addEventListener("click", () => {
+      fcEdit = n; $("fc-recto").value = n.term; $("fc-verso").value = n.def; $("fc-ex").value = n.ex || ""; $("fc-why").value = n.why || "";
+      $("fc-chap").value = chapOf(n); $("fc-inv").checked = db.cards.some(c => c.nid === n.id && c.inv); if (n.ex || n.why) $("fc-plus").open = true;
+      $("fc-add").textContent = "Enregistrer la fiche"; $("fc-recto").focus(); $("fc-recto").scrollIntoView({block: "center", behavior: "smooth"});
+    });
+    b2.addEventListener("click", () => {
+      const cs = db.cards.filter(c => c.nid === n.id); db.notions = db.notions.filter(x => x !== n); db.cards = db.cards.filter(c => !cs.includes(c));
+      save(); renderToday(); renderFiches(); noteUndo(`Fiche « ${n.term} » supprimée.`, () => { db.notions.push(n); db.cards.push(...cs); save(); renderToday(); renderFiches(); });
+    });
+    a.append(b1, b2); r.append(t, a); box.append(r);
+  });
+}
+$("fc-open").addEventListener("click", () => {
+  fillDL(); $("man-card").hidden = true; $("fc-card").hidden = false; renderFiches();
+  $("fc-card").scrollIntoView({block: "start", behavior: "smooth"}); ($("fc-mat").value ? $("fc-recto") : $("fc-mat")).focus();
+});
+$("fc-close").addEventListener("click", () => { $("fc-card").hidden = true; fcEdit = null; renderFolders(); });
+$("fc-add").addEventListener("click", fcEnregistrer);
+["fc-recto", "fc-verso"].forEach(id => $(id).addEventListener("keydown", e => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); fcEnregistrer(); }
+  else if (e.key === "Enter" && !e.shiftKey && id === "fc-recto") { e.preventDefault(); $("fc-verso").focus(); }
+}));
+["fc-mat", "fc-chap"].forEach(id => $(id).addEventListener("change", renderFiches));
+$("fc-bulk-go").addEventListener("click", () => {
+  const p = ficheLignes($("fc-bulk").value);
+  if (!p.length) { note("Écris une fiche par ligne, par exemple : qualitative ; petit échantillon, on recherche le pourquoi", "warn"); $("fc-bulk").focus(); return; }
+  const added = p.map(([r, v]) => fcAjouter(r, v, "", ""));
+  save(); renderToday(); fillDL(); $("fc-bulk").value = ""; renderFiches();
+  fcDone(`${added.length} fiche${added.length > 1 ? "s" : ""} ajoutée${added.length > 1 ? "s" : ""}.`);
+  noteUndo(`${added.length} fiches ajoutées.`, () => { const ns = added.map(a => a[0]), cs = added.flatMap(a => a[1]); db.notions = db.notions.filter(x => !ns.includes(x)); db.cards = db.cards.filter(c => !cs.includes(c)); save(); renderToday(); renderFiches(); fcDone(""); });
+});
+$("fc-rev").addEventListener("click", () => { const m = fcMat(), ch = fcChap(); tab("cartes"); $("ca-mat").value = m; fillChapSel($("ca-chap"), m); $("ca-chap").value = ch; renderCartes(); });
 
 /* ---------- Le bouton « retour » du navigateur marche, et la page ouverte est gardée ---------- */
 window.addEventListener("popstate", () => tab(TABS[location.hash.slice(1)] ? location.hash.slice(1) : "jour", true));

@@ -521,3 +521,12 @@ button.primary .ic,label.btn .ic,button .ic{width:20px;height:20px}
 .nia .ex{background:var(--surface-2);border-radius:var(--radius-sm);padding:6px 10px;font-size:15px}
 .partie>.row{padding:var(--space-2) 0 var(--space-3)}
 @media (max-width:900px){.partie.lv2{margin-left:var(--space-3)}}
+
+/* ---------- Version 1.9 : créer mes fiches ---------- */
+.fc-duo{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4)}
+.fc-face textarea{font-size:18px;min-height:96px}
+.fc-lab{display:inline-block;font-weight:800;background:var(--accent-soft);color:var(--accent-text);border-radius:var(--radius-pill);padding:2px 10px;margin-right:6px}
+.fc-row{display:flex;gap:var(--space-3);justify-content:space-between;align-items:flex-start;border-top:1px solid var(--line);padding-top:var(--space-3)}
+.fc-txt{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fc-txt p{margin:0;overflow-wrap:anywhere} .fc-r{font-weight:800} .fc-v{color:var(--text-2)} .fc-txt .chip{align-self:flex-start}
+@media (max-width:700px){.fc-duo{grid-template-columns:1fr}.fc-row{flex-direction:column}}

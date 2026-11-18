@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600..800&family=Nunito:wght@400..900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/notea.css?v=1.8">
+<link rel="stylesheet" href="css/notea.css?v=1.9">
 </head>
 <body>
 
@@ -137,9 +137,34 @@
 
   <!-- ===== Mes cours ===== -->
   <section id="tab-notions" class="stack" hidden>
-    <div class="row" style="justify-content:space-between"><p class="muted">Retrouve tous tes cours, rangés par matière.</p><span class="row"><button id="man-open"><svg class="ic" aria-hidden="true"><use href="#i-pencil"/></svg>Créer à la main</button><button class="primary" id="imp-open"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Importer un cours</button></span></div>
+    <div class="row" style="justify-content:space-between"><p class="muted">Retrouve tous tes cours, rangés par matière.</p><span class="row"><button class="primary" id="fc-open"><svg class="ic" aria-hidden="true"><use href="#i-pencil"/></svg>Créer mes fiches</button><button id="man-open">Écrire mon cours</button><button class="primary" id="imp-open"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Importer un cours</button></span></div>
     <div class="folders" id="dossiers"></div>
     <p class="muted" id="dossiers-vide" hidden>Pas encore de cours. Importe ton premier cours juste en dessous.</p>
+    <div class="card" id="fc-card" hidden>
+      <h2>Créer mes fiches</h2>
+      <p class="muted">Recto : le mot ou la question. Verso : la réponse. Tes fiches vont dans tous les outils : révision du jour, quiz, questions à trous, cartes, jeux et examen blanc. Pas besoin d'IA.</p>
+      <div class="row"><label for="fc-mat"><b>Matière</b></label><input type="text" id="fc-mat" list="mat-list" placeholder="Par exemple : Marketing" style="flex:1 1 200px">
+        <label for="fc-chap"><b>Chapitre</b></label><input type="text" id="fc-chap" list="chap-list" placeholder="Facultatif. Par exemple : Les études" style="flex:1 1 200px"></div>
+      <div class="fc-duo">
+        <div class="fld fc-face"><label for="fc-recto"><span class="fc-lab">Recto</span> le mot ou la question</label><textarea id="fc-recto" rows="2" placeholder="Par exemple : qualitative"></textarea></div>
+        <div class="fld fc-face"><label for="fc-verso"><span class="fc-lab">Verso</span> la réponse</label><textarea id="fc-verso" rows="3" placeholder="Par exemple : petit échantillon, analyse en profondeur individuelle, on recherche le pourquoi"></textarea></div>
+      </div>
+      <details id="fc-plus"><summary>Ajouter un exemple ou une explication <span class="muted">(facultatif)</span></summary>
+        <div class="fld"><label for="fc-ex">Un exemple</label><textarea id="fc-ex"></textarea></div>
+        <div class="fld"><label for="fc-why">Une explication <span class="muted">(elle s'affiche dans la correction)</span></label><textarea id="fc-why"></textarea></div>
+      </details>
+      <div class="row"><button class="primary" id="fc-add">Ajouter la fiche</button><label class="toggle"><input type="checkbox" id="fc-inv" checked> Carte réversible (aussi dans l'autre sens)</label></div>
+      <p class="muted">Astuce : Entrée passe au verso, Ctrl + Entrée ajoute la fiche.</p>
+      <details class="sect"><summary><b>Coller plusieurs fiches d'un coup</b><span class="muted">une fiche par ligne</span></summary>
+        <textarea id="fc-bulk" style="min-height:130px" placeholder="qualitative ; petit échantillon, analyse en profondeur individuelle, on recherche le pourquoi
+quantitative ; grand échantillon, des chiffres, on mesure combien"></textarea>
+        <p class="muted">Sépare le recto et le verso par « ; », « : », « = » ou un tiret. Un export Quizlet marche aussi.</p>
+        <div class="row"><button class="primary" id="fc-bulk-go">Ajouter ces fiches</button></div>
+      </details>
+      <p class="msg ok" id="fc-done" role="status"></p>
+      <div id="fc-list" class="stack"></div>
+      <div class="row"><button class="primary" id="fc-rev" hidden>Réviser ces fiches</button><button id="fc-close">Fermer</button></div>
+    </div>
     <div class="card" id="man-card" hidden>
       <h2>Créer mon cours à la main</h2>
       <p class="muted">Tu écris toi-même ce que ton prof a enseigné. C'est la base la plus fiable pour tes révisions.</p>
@@ -150,7 +175,7 @@
         <div class="row"><button id="man-text-save">Enregistrer le cours</button><button id="man-text-ana">Trouver les notions dans ce texte</button></div>
       </details>
       <details class="sect" open><summary><b>2. Mes notions</b><span class="muted">définitions, concepts, formules, dates…</span></summary>
-        <span class="seg2" id="man-kind" role="group" aria-label="Type de notion"><button data-k="def" class="on">Définition</button><button data-k="concept">Concept</button><button data-k="form">Formule</button><button data-k="date">Date</button><button data-k="info">À retenir</button><button data-k="regle">Règle</button></span>
+        <span class="seg2" id="man-kind" role="group" aria-label="Type de notion"><button data-k="def" class="on">Définition</button><button data-k="concept">Concept</button><button data-k="form">Formule</button><button data-k="date">Date</button><button data-k="info">À retenir</button><button data-k="regle">Règle</button><button data-k="q">Question</button></span>
         <div class="fld"><label for="man-term" id="man-term-l">Le mot</label><input type="text" id="man-term" autocomplete="off"></div>
         <div class="fld"><label for="man-def" id="man-def-l">Sa définition</label><textarea id="man-def"></textarea></div>
         <div class="fld"><label for="man-ex">Un exemple du cours <span class="muted">(facultatif, il servira aux questions de compréhension)</span></label><textarea id="man-ex"></textarea></div>
@@ -218,7 +243,7 @@
     </div>
     <div class="card" id="edit-card" hidden>
       <h2>Modifier la notion</h2>
-      <div class="row"><b>Type</b><span class="seg2" id="ed-kind" role="group" aria-label="Type de notion"><button data-k="def" class="on">Définition</button><button data-k="concept">Concept</button><button data-k="form">Formule</button><button data-k="date">Date</button><button data-k="info">À retenir</button><button data-k="regle">Règle</button></span></div>
+      <div class="row"><b>Type</b><span class="seg2" id="ed-kind" role="group" aria-label="Type de notion"><button data-k="def" class="on">Définition</button><button data-k="concept">Concept</button><button data-k="form">Formule</button><button data-k="date">Date</button><button data-k="info">À retenir</button><button data-k="regle">Règle</button><button data-k="q">Question</button></span></div>
       <div class="row"><label for="ed-term"><b>Terme</b></label><input type="text" id="ed-term" style="flex:1 1 200px"><label for="ed-chap"><b>Chapitre</b></label><input type="text" id="ed-chap" list="chap-list" style="flex:1 1 200px"></div>
       <div class="fld"><label for="ed-def">Définition ou contenu</label><textarea id="ed-def"></textarea></div>
       <div class="fld"><label for="ed-ex">Exemple</label><textarea id="ed-ex"></textarea></div>
@@ -661,18 +686,18 @@
 <datalist id="chap-list"></datalist>
 <div id="sheet"></div>
 <div class="ruler" id="ruler-t" hidden></div><div class="ruler" id="ruler-b" hidden></div>
-<script src="js/moteur/00-outils.js?v=1.8"></script>
-<script src="js/moteur/01-ingestion.js?v=1.8"></script>
-<script src="js/moteur/02-classification.js?v=1.8"></script>
-<script src="js/moteur/03-semantique.js?v=1.8"></script>
-<script src="js/moteur/04-pertinence.js?v=1.8"></script>
-<script src="js/moteur/05-graphe.js?v=1.8"></script>
-<script src="js/moteur/06-pedagogie.js?v=1.8"></script>
-<script src="js/moteur/07-eleve.js?v=1.8"></script>
-<script src="js/moteur/08-generation.js?v=1.8"></script>
-<script src="js/moteur/09-schemas.js?v=1.8"></script>
-<script src="js/moteur/10-adaptation.js?v=1.8"></script>
-<script src="js/moteur/11-pipeline.js?v=1.8"></script>
-<script src="js/app.js?v=1.8"></script>
+<script src="js/moteur/00-outils.js?v=1.9"></script>
+<script src="js/moteur/01-ingestion.js?v=1.9"></script>
+<script src="js/moteur/02-classification.js?v=1.9"></script>
+<script src="js/moteur/03-semantique.js?v=1.9"></script>
+<script src="js/moteur/04-pertinence.js?v=1.9"></script>
+<script src="js/moteur/05-graphe.js?v=1.9"></script>
+<script src="js/moteur/06-pedagogie.js?v=1.9"></script>
+<script src="js/moteur/07-eleve.js?v=1.9"></script>
+<script src="js/moteur/08-generation.js?v=1.9"></script>
+<script src="js/moteur/09-schemas.js?v=1.9"></script>
+<script src="js/moteur/10-adaptation.js?v=1.9"></script>
+<script src="js/moteur/11-pipeline.js?v=1.9"></script>
+<script src="js/app.js?v=1.9"></script>
 </body>
 </html>
