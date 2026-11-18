@@ -1568,7 +1568,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.9";
+const VERSION = "1.10";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -2959,6 +2959,54 @@ $("fc-bulk-go").addEventListener("click", () => {
   noteUndo(`${added.length} fiches ajoutées.`, () => { const ns = added.map(a => a[0]), cs = added.flatMap(a => a[1]); db.notions = db.notions.filter(x => !ns.includes(x)); db.cards = db.cards.filter(c => !cs.includes(c)); save(); renderToday(); renderFiches(); fcDone(""); });
 });
 $("fc-rev").addEventListener("click", () => { const m = fcMat(), ch = fcChap(); tab("cartes"); $("ca-mat").value = m; fillChapSel($("ca-chap"), m); $("ca-chap").value = ch; renderCartes(); });
+
+
+/* ---------- Version 1.10 : faire ses fiches à l'oral ---------- */
+["fc-recto", "fc-verso", "fc-ex", "fc-why", "fc-bulk"].forEach(id => addMic(id));
+/* Le mode oral : on dit le recto, Notéa passe seul au verso ; « fiche suivante » ajoute la fiche et repart au recto. */
+{
+  let oral = null, phase = "recto";
+  const nk2 = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim();
+  const FIN = /(?:^|\s)(fiche suivante|suivante|ajoute la fiche|ajouter la fiche|valide|valider)$/;
+  const etat = () => {
+    const box = $("fc-oral-t");
+    box.textContent = !oral ? "" : phase === "recto" ? "🎤 Dis le recto : le mot ou la question." : "🎤 Explique le verso. Dis « fiche suivante » pour l'ajouter, ou « recto » pour corriger le recto.";
+    $("fc-recto").classList.toggle("fc-ecoute", !!oral && phase === "recto"); $("fc-verso").classList.toggle("fc-ecoute", !!oral && phase === "verso");
+  };
+  const ajoute = (id, txt) => { const f = $(id), v = f.value; if (!txt) return; f.value = v + (/\S$/.test(v) ? " " : "") + txt; };
+  const aPhase = p => { phase = p; $(p === "recto" ? "fc-recto" : "fc-verso").focus(); etat(); };
+  function entendu(brut) {
+    const t = brut.trim(), k = nk2(t); if (!k) return;
+    if (/^(stop|arrete|arreter|termine|fin de la dictee)$/.test(k)) { arreter(); return; }
+    if (k === "recto") { $("fc-recto").value = ""; aPhase("recto"); return; }
+    if (k === "verso" || k === "reponse") { aPhase("verso"); return; }
+    if (phase === "recto") { ajoute("fc-recto", t.replace(/[.]$/, "")); aPhase("verso"); return; }
+    const m = k.match(FIN);
+    if (m) {
+      const n = m[1].split(" ").length, mots = t.split(/\s+/); ajoute("fc-verso", mots.slice(0, Math.max(0, mots.length - n)).join(" ").replace(/[,.]$/, ""));
+      if ($("fc-recto").value.trim() && $("fc-verso").value.trim()) { fcEnregistrer(); aPhase("recto"); } else note("Il manque le recto ou le verso.", "warn");
+      return;
+    }
+    ajoute("fc-verso", t);
+  }
+  function lancer() {
+    oral = new SRC(); oral.lang = "fr-FR"; oral.continuous = true; oral.interimResults = false;
+    oral.onresult = e => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) entendu(e.results[i][0].transcript); };
+    oral.onend = () => { if (oral) { try { oral.start(); } catch (e) { arreter(); } } };   // le navigateur coupe après un silence : on relance
+    oral.onerror = e => { if (e.error === "not-allowed" || e.error === "service-not-allowed") { note("Autorise le micro pour dicter tes fiches.", "warn"); arreter(); } };
+    try { oral.start(); } catch (e) { oral = null; return; }
+    $("fc-oral").textContent = "Arrêter le mode oral"; $("fc-oral").classList.add("on");
+    aPhase($("fc-recto").value.trim() && !$("fc-verso").value.trim() ? "verso" : "recto");
+  }
+  function arreter() { const r = oral; oral = null; if (r) try { r.stop(); } catch (e) {} $("fc-oral").textContent = "🎤 Faire mes fiches à l'oral"; $("fc-oral").classList.remove("on"); etat(); }
+  if (!SRC) $("fc-oral-row").hidden = true;
+  else {
+    $("fc-oral").addEventListener("click", () => oral ? arreter() : lancer());
+    $("fc-close").addEventListener("click", arreter);
+    $("fc-recto").addEventListener("focus", () => { if (oral && phase !== "recto") { phase = "recto"; etat(); } });
+    $("fc-verso").addEventListener("focus", () => { if (oral && phase !== "verso") { phase = "verso"; etat(); } });
+  }
+}
 
 /* ---------- Le bouton « retour » du navigateur marche, et la page ouverte est gardée ---------- */
 window.addEventListener("popstate", () => tab(TABS[location.hash.slice(1)] ? location.hash.slice(1) : "jour", true));

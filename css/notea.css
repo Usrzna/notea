@@ -530,3 +530,7 @@ button.primary .ic,label.btn .ic,button .ic{width:20px;height:20px}
 .fc-txt{display:flex;flex-direction:column;gap:4px;min-width:0}
 .fc-txt p{margin:0;overflow-wrap:anywhere} .fc-r{font-weight:800} .fc-v{color:var(--text-2)} .fc-txt .chip{align-self:flex-start}
 @media (max-width:700px){.fc-duo{grid-template-columns:1fr}.fc-row{flex-direction:column}}
+
+/* ---------- Version 1.10 : fiches à l'oral ---------- */
+#fc-oral{font-weight:800}
+.fc-face textarea.fc-ecoute{border-color:var(--danger);box-shadow:0 0 0 3px var(--danger-soft)}

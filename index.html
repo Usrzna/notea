@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600..800&family=Nunito:wght@400..900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/notea.css?v=1.9">
+<link rel="stylesheet" href="css/notea.css?v=1.10">
 </head>
 <body>
 
@@ -145,6 +145,7 @@
       <p class="muted">Recto : le mot ou la question. Verso : la réponse. Tes fiches vont dans tous les outils : révision du jour, quiz, questions à trous, cartes, jeux et examen blanc. Pas besoin d'IA.</p>
       <div class="row"><label for="fc-mat"><b>Matière</b></label><input type="text" id="fc-mat" list="mat-list" placeholder="Par exemple : Marketing" style="flex:1 1 200px">
         <label for="fc-chap"><b>Chapitre</b></label><input type="text" id="fc-chap" list="chap-list" placeholder="Facultatif. Par exemple : Les études" style="flex:1 1 200px"></div>
+      <div class="row" id="fc-oral-row"><button class="mic" id="fc-oral">🎤 Faire mes fiches à l'oral</button><span class="muted" id="fc-oral-t" role="status" aria-live="polite"></span></div>
       <div class="fc-duo">
         <div class="fld fc-face"><label for="fc-recto"><span class="fc-lab">Recto</span> le mot ou la question</label><textarea id="fc-recto" rows="2" placeholder="Par exemple : qualitative"></textarea></div>
         <div class="fld fc-face"><label for="fc-verso"><span class="fc-lab">Verso</span> la réponse</label><textarea id="fc-verso" rows="3" placeholder="Par exemple : petit échantillon, analyse en profondeur individuelle, on recherche le pourquoi"></textarea></div>
@@ -154,7 +155,7 @@
         <div class="fld"><label for="fc-why">Une explication <span class="muted">(elle s'affiche dans la correction)</span></label><textarea id="fc-why"></textarea></div>
       </details>
       <div class="row"><button class="primary" id="fc-add">Ajouter la fiche</button><label class="toggle"><input type="checkbox" id="fc-inv" checked> Carte réversible (aussi dans l'autre sens)</label></div>
-      <p class="muted">Astuce : Entrée passe au verso, Ctrl + Entrée ajoute la fiche.</p>
+      <p class="muted">Astuce : Entrée passe au verso, Ctrl + Entrée ajoute la fiche. À l'oral : dis le recto, puis explique le verso, puis dis « fiche suivante ».</p>
       <details class="sect"><summary><b>Coller plusieurs fiches d'un coup</b><span class="muted">une fiche par ligne</span></summary>
         <textarea id="fc-bulk" style="min-height:130px" placeholder="qualitative ; petit échantillon, analyse en profondeur individuelle, on recherche le pourquoi
 quantitative ; grand échantillon, des chiffres, on mesure combien"></textarea>
@@ -686,18 +687,18 @@ quantitative ; grand échantillon, des chiffres, on mesure combien"></textarea>
 <datalist id="chap-list"></datalist>
 <div id="sheet"></div>
 <div class="ruler" id="ruler-t" hidden></div><div class="ruler" id="ruler-b" hidden></div>
-<script src="js/moteur/00-outils.js?v=1.9"></script>
-<script src="js/moteur/01-ingestion.js?v=1.9"></script>
-<script src="js/moteur/02-classification.js?v=1.9"></script>
-<script src="js/moteur/03-semantique.js?v=1.9"></script>
-<script src="js/moteur/04-pertinence.js?v=1.9"></script>
-<script src="js/moteur/05-graphe.js?v=1.9"></script>
-<script src="js/moteur/06-pedagogie.js?v=1.9"></script>
-<script src="js/moteur/07-eleve.js?v=1.9"></script>
-<script src="js/moteur/08-generation.js?v=1.9"></script>
-<script src="js/moteur/09-schemas.js?v=1.9"></script>
-<script src="js/moteur/10-adaptation.js?v=1.9"></script>
-<script src="js/moteur/11-pipeline.js?v=1.9"></script>
-<script src="js/app.js?v=1.9"></script>
+<script src="js/moteur/00-outils.js?v=1.10"></script>
+<script src="js/moteur/01-ingestion.js?v=1.10"></script>
+<script src="js/moteur/02-classification.js?v=1.10"></script>
+<script src="js/moteur/03-semantique.js?v=1.10"></script>
+<script src="js/moteur/04-pertinence.js?v=1.10"></script>
+<script src="js/moteur/05-graphe.js?v=1.10"></script>
+<script src="js/moteur/06-pedagogie.js?v=1.10"></script>
+<script src="js/moteur/07-eleve.js?v=1.10"></script>
+<script src="js/moteur/08-generation.js?v=1.10"></script>
+<script src="js/moteur/09-schemas.js?v=1.10"></script>
+<script src="js/moteur/10-adaptation.js?v=1.10"></script>
+<script src="js/moteur/11-pipeline.js?v=1.10"></script>
+<script src="js/app.js?v=1.10"></script>
 </body>
 </html>
