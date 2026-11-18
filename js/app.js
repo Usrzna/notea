@@ -119,9 +119,13 @@ function todayQueue(now = Date.now()) {
   const due = live.filter(n => n.last && n.due <= end.getTime()).sort((a, b) => (1 - retr(b, now)) * weight(matOf(b), now) - (1 - retr(a, now)) * weight(matOf(a), now));
   const fresh = live.filter(n => !n.last).sort((a, b) => weight(matOf(b), now) - weight(matOf(a), now) || (b.mark === "dif" || b.mark === "q") - (a.mark === "dif" || a.mark === "q") || a.created - b.created)
     .slice(0, Math.max(0, newQuota(now) - db.newToday));
+  // un examen dans les 7 jours : ses notions passent avant tout le reste
+  const prio = examPrio(now), rang = n => { const i = prio.indexOf(matOf(n)); return i < 0 ? prio.length : i; };
+  const cands = due.concat(fresh).map((n, k) => [n, k]).sort((a, b) => rang(a[0]) - rang(b[0]) || a[1] - b[1]).map(p => p[0]);
   const out = []; let t = 0;
-  for (const n of due.concat(fresh)) { if ((t + secFor(n) > budget && out.length >= 3) || out.length >= cap) break; out.push(n); t += secFor(n); }
-  return espacer(mixMQ(ordreMalin(out, now), now));
+  for (const n of cands) { if ((t + secFor(n) > budget && out.length >= 3) || out.length >= cap) break; out.push(n); t += secFor(n); }
+  const blocs = []; for (let i = 0; i <= prio.length; i++) { const part = out.filter(n => rang(n) === i); if (part.length) blocs.push(...ordreMalin(part, now)); }
+  return espacer(mixMQ(blocs, now));
 }
 function renderToday() {
   const q = todayQueue(), n = q.length; homeStats(q); renderExamToday();
@@ -134,7 +138,7 @@ function renderToday() {
   if (!n) { const next = Math.min(...db.notions.map(x => x.due || Infinity)); $("jour-titre").textContent = "Tout est à jour"; $("jour-sous").textContent = "Reviens " + when(next) + ". Ton cerveau a besoin de temps pour oublier un peu."; $("go").disabled = true; $("jour-suite").textContent = ""; return; }
   const min = Math.max(1, sessionMin(q));
   $("jour-titre").textContent = `${n} notion${n > 1 ? "s" : ""} · environ ${min} min`;
-  $("jour-sous").textContent = "Arrête-toi quand tu veux. Ce que tu ne fais pas aujourd'hui revient demain.";
+  $("jour-sous").textContent = seanceInfo(q) || "Arrête-toi quand tu veux. Ce que tu ne fais pas aujourd'hui revient demain.";
   $("jour-suite").textContent = exs.length ? `${exs[0][0]} : examen ${when(exs[0][1])}` : "";
   $("go").disabled = false;
 }
@@ -171,7 +175,7 @@ function startSession() {
 }
 function showCard() {
   const n = queue[idx]; shown = false;
-  $("pos").textContent = `${idx + 1} sur ${queue.length}`;
+  $("pos").textContent = `${idx + 1} sur ${queue.length} · ${matOf(n)}`;
   $("prog").style.width = Math.round(idx / queue.length * 100) + "%";
   if (n.enonce) mqShow(n); else { $("q-src").replaceChildren(srcHTML(n)); $("q-text").replaceChildren(holeHTML(n, false)); }
   $("voir").hidden = false; $("noter").hidden = true; $("voir").focus(); cardExtras(n);
@@ -1568,7 +1572,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.12";
+const VERSION = "1.13";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -2913,7 +2917,7 @@ function fcEnregistrer() {
   }
   const [n, cs] = fcAjouter(recto, verso, ex, why);
   save(); renderToday(); fillDL(); fcVider(); renderFiches();
-  fcDone(`Fiche « ${recto} » ajoutée. Elle arrive dans ta révision du jour, tes quiz, tes trous et tes cartes.`);
+  fcDone(`✓ « ${recto} » ajoutée.`);
   noteUndo(`Fiche « ${recto} » ajoutée.`, () => { db.notions = db.notions.filter(x => x !== n); db.cards = db.cards.filter(c => !cs.includes(c)); save(); renderToday(); renderFiches(); fcDone(""); });
 }
 function renderFiches() {
@@ -2929,7 +2933,7 @@ function renderFiches() {
     const a = el("div", "row"), b1 = el("button", "", "Modifier"), b2 = el("button", "", "Supprimer");
     b1.addEventListener("click", () => {
       fcEdit = n; $("fc-recto").value = n.term; $("fc-verso").value = n.def; $("fc-ex").value = n.ex || ""; $("fc-why").value = n.why || "";
-      $("fc-chap").value = chapOf(n); $("fc-inv").checked = db.cards.some(c => c.nid === n.id && c.inv); if (n.ex || n.why) $("fc-plus").open = true;
+      $("fc-chap").value = chapOf(n); $("fc-inv").checked = db.cards.some(c => c.nid === n.id && c.inv); if (n.ex || n.why) $("fc-opts").open = true;
       $("fc-add").textContent = "Enregistrer la fiche"; $("fc-recto").focus(); $("fc-recto").scrollIntoView({block: "center", behavior: "smooth"});
     });
     b2.addEventListener("click", () => {
@@ -2939,11 +2943,8 @@ function renderFiches() {
     a.append(b1, b2); r.append(t, a); box.append(r);
   });
 }
-$("fc-open").addEventListener("click", () => {
-  fillDL(); $("man-card").hidden = true; $("fc-card").hidden = false; renderFiches();
-  $("fc-card").scrollIntoView({block: "start", behavior: "smooth"}); ($("fc-mat").value ? $("fc-recto") : $("fc-mat")).focus();
-});
-$("fc-close").addEventListener("click", () => { $("fc-card").hidden = true; fcEdit = null; renderFolders(); });
+$("fc-open").addEventListener("click", () => fcOuvrir());
+$("fc-close").addEventListener("click", () => fcFermer());
 $("fc-add").addEventListener("click", fcEnregistrer);
 ["fc-recto", "fc-verso"].forEach(id => $(id).addEventListener("keydown", e => {
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); fcEnregistrer(); }
@@ -2962,7 +2963,7 @@ $("fc-rev").addEventListener("click", () => { const m = fcMat(), ch = fcChap(); 
 
 
 /* ---------- Version 1.10 : faire ses fiches à l'oral ---------- */
-["fc-recto", "fc-verso", "fc-ex", "fc-why", "fc-bulk"].forEach(id => addMic(id));
+addMic("fc-bulk");
 /* Le mode oral : on dit le recto, Notéa passe seul au verso ; « fiche suivante » ajoute la fiche et repart au recto. */
 {
   let oral = null, phase = "recto";
@@ -3100,6 +3101,64 @@ function monte(x, t) {
   const facile = t === "def" || t === "affirm" || t === "carte", z = x.qz || {};
   const maitrise = (z.ok || 0) >= 2 || (x.reps || 0) >= 3, neuf = !(z.n) && !x.last;
   return facile ? (maitrise ? 2.5 : neuf ? -1.5 : 0) : (maitrise ? -0.5 : neuf ? 3 : 0);
+}
+
+
+/* ---------- Version 1.13 ---------- */
+/* Les matières qui ont leur propre examen dans les 7 jours, la plus proche d'abord. */
+function examPrio(now = Date.now()) {
+  if (!ACT) return [];   // au tout début du chargement
+  return matsWithNotions().filter(m => (db.mats[m] || {}).due).map(m => [m, dueTime(m)])
+    .filter(([, e]) => { const j = joursAvant(e, now); return j >= 0 && j <= 7; }).sort((a, b) => a[1] - b[1]).map(p => p[0]);
+}
+/* Dire à l'élève ce que contient la séance : d'abord l'examen, puis le reste. */
+function seanceInfo(q) {
+  const prio = examPrio(); if (!prio.length || !q.length) return "";
+  const m = prio[0], j = joursAvant(dueTime(m), Date.now()), n1 = q.filter(x => matOf(x) === m).length, n2 = q.length - n1;
+  const quand = j === 0 ? "aujourd'hui" : j === 1 ? "demain" : "dans " + j + " jours";
+  if (!n1) return "Examen de " + m + " " + quand + " : rien de prévu aujourd'hui pour cette matière, ton plan est à jour.";
+  return "D'abord " + m + " (examen " + quand + ") : " + n1 + " notion" + (n1 > 1 ? "s" : "") + "." + (n2 ? " Ensuite " + n2 + " notion" + (n2 > 1 ? "s" : "") + " d'autres matières." : "");
+}
+
+/* ---------- Créer mes fiches : un écran à part, le strict minimum ---------- */
+function fcCompte() { const m = fcMat(), n = db.notions.filter(x => x.fiche && matOf(x) === m).length; $("fc-voir").textContent = "Voir mes fiches (" + n + ")"; $("fc-voir").hidden = !n; }
+function fcOuvrir() { fillDL(); $("man-card").hidden = true; $("fc-card").hidden = false; document.body.classList.add("fc-on"); $("fc-liste").hidden = true; fcCompte(); ($("fc-mat").value ? $("fc-recto") : $("fc-mat")).focus(); }
+function fcFermer() { $("fc-card").hidden = true; document.body.classList.remove("fc-on"); fcEdit = null; renderFolders(); }
+$("fc-voir").addEventListener("click", () => { const h = !$("fc-liste").hidden; $("fc-liste").hidden = h; if (!h) { renderFiches(); $("fc-liste").scrollIntoView({block: "start", behavior: "smooth"}); } });
+$("fc-x").addEventListener("click", () => $("fc-close").click());
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("fc-card").hidden && !$("ctx")) $("fc-close").click(); });
+["fc-mat", "fc-add", "fc-bulk-go"].forEach(id => $(id).addEventListener(id === "fc-mat" ? "change" : "click", () => setTimeout(fcCompte)));
+
+/* ---------- Mode concentration : plein écran, rien qui dérange ---------- */
+function zenOn() {
+  document.body.classList.add("zen"); try { localStorage.setItem("notea-zen", "1"); } catch (e) {}
+  const d = document.documentElement; if (d.requestFullscreen && !document.fullscreenElement) d.requestFullscreen().catch(() => {});
+  $("zen").textContent = "Quitter la concentration"; $("zen").setAttribute("aria-pressed", "true");
+  $("zen-astuce").hidden = false; clearTimeout(zenOn.t); zenOn.t = setTimeout(() => { $("zen-astuce").hidden = true; }, 9000);
+}
+function zenOff() {
+  document.body.classList.remove("zen"); try { localStorage.removeItem("notea-zen"); } catch (e) {}
+  if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+  $("zen").textContent = "🎧 Concentration"; $("zen").setAttribute("aria-pressed", "false"); $("zen-astuce").hidden = true;
+}
+$("zen").addEventListener("click", () => document.body.classList.contains("zen") ? zenOff() : zenOn());
+$("zen-sortir").addEventListener("click", zenOff);
+$("zen-astuce-x").addEventListener("click", () => { $("zen-astuce").hidden = true; });
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && document.body.classList.contains("zen")) zenOff(); });
+/* En concentration, les messages de points et de niveaux se taisent : seuls restent les messages utiles (Annuler, erreurs). */
+{ const n0 = $("note"); new MutationObserver(() => { if (document.body.classList.contains("zen") && !n0.hidden && /XP|plume|niveau|Niveau|\+\d/.test(n0.textContent) && !n0.querySelector("button")) n0.hidden = true; }).observe(n0, {childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["hidden"]}); }
+
+/* ---------- Le menu de gauche sort quand la souris va à gauche, et se cache quand elle part ---------- */
+{
+  const side = document.querySelector(".side"), mq = matchMedia("(min-width:901px) and (hover:hover)");
+  let t = null; const montre = () => { clearTimeout(t); document.body.classList.add("side-on"); };
+  const cache = () => { clearTimeout(t); t = setTimeout(() => { if (!side.matches(":hover") && !side.contains(document.activeElement)) document.body.classList.remove("side-on"); }, 250); };
+  const applique = () => document.body.classList.toggle("side-auto", mq.matches);
+  applique(); mq.addEventListener ? mq.addEventListener("change", applique) : mq.addListener(applique);
+  document.addEventListener("mousemove", e => { if (!document.body.classList.contains("side-auto")) return; if (e.clientX <= 14) montre(); });
+  side.addEventListener("mouseenter", montre); side.addEventListener("mouseleave", cache);
+  side.addEventListener("focusin", montre); side.addEventListener("focusout", cache);
+  side.addEventListener("click", e => { if (e.target.closest("button")) { document.body.classList.remove("side-on"); side.querySelectorAll("button").forEach(b => b.blur()); } });
 }
 
 /* ---------- Le bouton « retour » du navigateur marche, et la page ouverte est gardée ---------- */

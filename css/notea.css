@@ -541,3 +541,40 @@ button.primary .ic,label.btn .ic,button .ic{width:20px;height:20px}
 .ctx button{justify-content:flex-start;text-align:left;border:0;background:transparent;width:100%}
 .ctx button:hover,.ctx button:focus-visible{background:var(--surface-2)}
 .ctx button.danger{color:var(--danger)} .ctx button.danger:hover{background:var(--danger-soft)}
+
+/* ---------- Version 1.13 ---------- */
+/* Créer mes fiches : un écran à part, au calme */
+.fc-env{position:fixed;inset:0;z-index:70;background:var(--bg);overflow:auto;padding:var(--space-8) var(--space-4)}
+body.fc-on{overflow:hidden}
+.fc-box{max-width:620px;margin:0 auto;display:flex;flex-direction:column;gap:var(--space-4)}
+.fc-head{display:flex;justify-content:space-between;align-items:center}
+.fc-head h2{margin:0;font-size:28px}
+.fc-x{min-width:44px;min-height:44px;font-size:20px;border-radius:var(--radius-pill)}
+.fc-meta{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3)}
+.fc-face textarea{font-size:20px;min-height:90px}
+.fc-go{width:100%;min-height:56px;font-size:18px}
+.fc-ok:empty{display:none}
+.fc-bas{display:flex;justify-content:space-between;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+.fc-lien{border:0;background:transparent;text-decoration:underline;font-weight:700}
+.fc-oral-t:empty{display:none}
+.fc-opts{border-top:1px solid var(--line);padding-top:var(--space-3)} .fc-opts summary{cursor:pointer;color:var(--text-2);font-weight:700}
+.fc-opts[open]{display:flex;flex-direction:column;gap:var(--space-3)}
+@media (max-width:600px){.fc-meta{grid-template-columns:1fr}.fc-env{padding:var(--space-4)}}
+
+/* Mode concentration */
+.zen-sortir{display:none}
+body.zen .zen-sortir{display:inline-flex;position:fixed;top:var(--space-3);right:var(--space-3);z-index:80;opacity:.55}
+body.zen .zen-sortir:hover,body.zen .zen-sortir:focus-visible{opacity:1}
+body.zen .side,body.zen .tabbar,body.zen .xp,body.zen #theme-quick,body.zen #zen,body.zen .subnav,body.zen #tuiles{display:none!important}
+body.zen .main{margin:0 auto!important;padding-top:var(--space-12);max-width:860px}
+.zen-astuce{position:fixed;left:50%;transform:translateX(-50%);bottom:var(--space-6);z-index:80;max-width:min(92vw,560px)}
+#zen[aria-pressed=true]{background:var(--accent);color:var(--on-accent)}
+
+/* Le menu de gauche se cache et sort quand la souris va à gauche */
+body.side-auto .side{transform:translateX(calc(-100% - var(--space-6)));transition:transform .22s ease;z-index:65}
+body.side-auto.side-on .side{transform:none}
+body.side-auto .main{margin-left:auto;margin-right:auto;padding-left:var(--space-8);max-width:1040px}
+body.side-auto .top .brand{display:flex;padding:0;font-size:18px} body.side-auto .top .brand svg{width:28px;height:28px}
+body.side-auto::before{content:"";position:fixed;left:0;top:30%;bottom:30%;width:5px;border-radius:0 6px 6px 0;background:var(--accent);opacity:.35;z-index:39}
+body.side-auto.side-on::before,body.zen::before{display:none}
+@media (prefers-reduced-motion:reduce){body.side-auto .side{transition:none}}
