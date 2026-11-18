@@ -1568,7 +1568,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.10";
+const VERSION = "1.11";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -1729,7 +1729,7 @@ function renderFolders() {
     const b = el("button", "folder f" + (i % 4)); b.setAttribute("aria-label", `${m}, ${ns.length} notions, maîtrise ${pc} %. Ouvrir dans mon carnet`);
     const tr = el("span", "track"), bar = document.createElement("i"); bar.style.width = Math.max(4, pc) + "%"; tr.append(bar);
     b.append(svgIc("folder"), el("b", "", m), el("span", "sub", (chN(m) ? chN(m) + " chapitre" + (chN(m) > 1 ? "s" : "") + " · " : nc ? nc + " cours · " : "") + ns.length + " notion" + (ns.length > 1 ? "s" : "")), tr, el("span", "sub", "Maîtrise " + pc + " %" + (dueTime(m) && joursAvant(dueTime(m), Date.now()) >= 0 ? " · examen " + dansJ(joursAvant(dueTime(m), Date.now())) : "")));
-    b.addEventListener("click", () => { nMat = m; nFilter = "tout"; tab("notes"); }); box.append(b); });
+    b.addEventListener("click", () => { nMat = m; nFilter = "tout"; tab("notes"); }); brancherMenu(b, m); box.append(b); });
   $("imp-card").hidden = ms.length > 0 && !impOpen && $("pick-card").hidden;
 }
 $("imp-open").addEventListener("click", () => { impOpen = true; $("imp-card").hidden = false; $("imp-card").scrollIntoView({block: "start", behavior: "smooth"}); $("imp-mat").focus(); });
@@ -3006,6 +3006,43 @@ $("fc-rev").addEventListener("click", () => { const m = fcMat(), ch = fcChap(); 
     $("fc-recto").addEventListener("focus", () => { if (oral && phase !== "recto") { phase = "recto"; etat(); } });
     $("fc-verso").addEventListener("focus", () => { if (oral && phase !== "verso") { phase = "verso"; etat(); } });
   }
+}
+
+
+/* ---------- Version 1.11 : supprimer un cours terminé (clic droit, ou appui long sur téléphone) ---------- */
+function supprimerMatiere(m) {
+  const avant = JSON.stringify(db), ids = new Set(db.cours.filter(c => c.mat === m).map(c => c.id)), n = db.notions.filter(x => matOf(x) === m).length;
+  db.notions = db.notions.filter(x => matOf(x) !== m); db.cards = (db.cards || []).filter(x => matOf(x) !== m); db.exos = (db.exos || []).filter(x => matOf(x) !== m);
+  db.cours = db.cours.filter(c => c.mat !== m); ids.forEach(id => { if (db.moteur) delete db.moteur[id]; });
+  if (db.ia) Object.keys(db.ia).forEach(k => { if (db.ia[k].mat === m || ids.has(k)) delete db.ia[k]; });
+  if (db.mats) delete db.mats[m];
+  save(); renderFolders(); renderToday();
+  noteUndo(`« ${m} » est supprimé (${n} notion${n > 1 ? "s" : ""}).`, () => { db = Object.assign(db, JSON.parse(avant)); save(); renderFolders(); renderToday(); });
+}
+function menuDossier(m, x, y) {
+  fermerMenu(); const box = el("div", "ctx"); box.id = "ctx"; box.setAttribute("role", "menu");
+  const b1 = el("button", "", "Ouvrir"), b2 = el("button", "danger", "🗑 Supprimer ce cours");
+  [b1, b2].forEach(b => b.setAttribute("role", "menuitem"));
+  b1.addEventListener("click", () => { fermerMenu(); nMat = m; nFilter = "tout"; tab("notes"); });
+  b2.addEventListener("click", () => {
+    fermerMenu(); const n = db.notions.filter(z => matOf(z) === m).length;
+    if (confirm(`Supprimer « ${m} » ?\n\n${n} notion${n > 1 ? "s" : ""}, les fiches, les cartes et les cours de cette matière seront supprimés.`)) supprimerMatiere(m);
+  });
+  box.append(el("p", "ctx-t", m), b1, b2); document.body.append(box);
+  const w = box.offsetWidth, h = box.offsetHeight;
+  box.style.left = Math.max(8, Math.min(x, innerWidth - w - 8)) + "px"; box.style.top = Math.max(8, Math.min(y, innerHeight - h - 8)) + "px"; b2.focus();
+}
+function fermerMenu() { const c = $("ctx"); if (c) c.remove(); }
+document.addEventListener("click", e => { if (!e.target.closest("#ctx")) fermerMenu(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") fermerMenu(); });
+addEventListener("scroll", fermerMenu, true);
+function brancherMenu(b, m) {
+  b.addEventListener("contextmenu", e => { e.preventDefault(); menuDossier(m, e.clientX, e.clientY); });
+  let t = null; const stop = () => clearTimeout(t);
+  b.addEventListener("touchstart", e => { const p = e.touches[0]; t = setTimeout(() => { b.dataset.long = "1"; menuDossier(m, p.clientX, p.clientY); }, 600); }, {passive: true});
+  ["touchend", "touchmove", "touchcancel"].forEach(k => b.addEventListener(k, stop));
+  b.addEventListener("click", e => { if (b.dataset.long) { e.stopImmediatePropagation(); delete b.dataset.long; } }, true);
+  b.addEventListener("keydown", e => { if (e.key === "Delete" || (e.shiftKey && e.key === "F10") || e.key === "ContextMenu") { e.preventDefault(); const r = b.getBoundingClientRect(); menuDossier(m, r.left + 20, r.top + 20); } });
 }
 
 /* ---------- Le bouton « retour » du navigateur marche, et la page ouverte est gardée ---------- */

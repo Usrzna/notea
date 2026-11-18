@@ -534,3 +534,10 @@ button.primary .ic,label.btn .ic,button .ic{width:20px;height:20px}
 /* ---------- Version 1.10 : fiches à l'oral ---------- */
 #fc-oral{font-weight:800}
 .fc-face textarea.fc-ecoute{border-color:var(--danger);box-shadow:0 0 0 3px var(--danger-soft)}
+
+/* ---------- Version 1.11 : menu clic droit sur un cours ---------- */
+.ctx{position:fixed;z-index:1000;min-width:220px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);box-shadow:0 12px 32px rgba(0,0,0,.28);padding:6px;display:flex;flex-direction:column;gap:2px}
+.ctx-t{margin:4px 10px 6px;font-weight:800;font-size:14px;color:var(--text-2);overflow-wrap:anywhere}
+.ctx button{justify-content:flex-start;text-align:left;border:0;background:transparent;width:100%}
+.ctx button:hover,.ctx button:focus-visible{background:var(--surface-2)}
+.ctx button.danger{color:var(--danger)} .ctx button.danger:hover{background:var(--danger-soft)}
