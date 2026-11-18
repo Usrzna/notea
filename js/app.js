@@ -125,10 +125,19 @@ function todayQueue(now = Date.now()) {
   const out = []; let t = 0;
   for (const n of cands) { if ((t + secFor(n) > budget && out.length >= 3) || out.length >= cap) break; out.push(n); t += secFor(n); }
   const blocs = []; for (let i = 0; i <= prio.length; i++) { const part = out.filter(n => rang(n) === i); if (part.length) blocs.push(...ordreMalin(part, now)); }
-  return espacer(mixMQ(blocs, now));
+  // v1.14 : les matières ne se mélangent plus. Chaque matière forme un bloc, avec ses propres questions de compréhension.
+  const parts = blocsParMatiere(blocs);
+  mqRevision(now).forEach(q => { const m = matOf(q); let p = parts.find(x => x[0] === m); if (!p) parts.push(p = [m, []]); (p[2] = p[2] || []).push(q); });
+  return parts.flatMap(([m, l, mq]) => espacer(mixMQ(l, now, mq || [])));
+}
+/* Les éléments groupés par matière, dans l'ordre où elles arrivent : [[matière, éléments], …] */
+function blocsParMatiere(list) {
+  const ordre = [], map = new Map();
+  list.forEach(x => { const m = matOf(x); if (!map.has(m)) { map.set(m, []); ordre.push(m); } map.get(m).push(x); });
+  return ordre.map(m => [m, map.get(m)]);
 }
 function renderToday() {
-  const q = todayQueue(), n = q.length; homeStats(q); renderExamToday();
+  const q = todayQueue(), n = q.length; homeStats(q); renderExamToday(); renderAutresMatieres([]);
   $("bienvenue").hidden = !!db.notions.length; $("accueil").hidden = !db.notions.length && $("seance").hidden;
   const exs = [...new Set(db.notions.map(matOf))].map(m => [m, dueTime(m)]).filter(x => x[1] > Date.now()).sort((a, b) => a[1] - b[1]);
   if ($("tuile-plan")) $("tuile-plan").textContent = exs.length ? `Prochaine échéance : ${exs[0][0]}, ${when(exs[0][1])}.` : "Ajoute tes échéances et tes coefficients : le planning se fait tout seul.";
@@ -136,9 +145,10 @@ function renderToday() {
   if (!db.notions.length) { $("jour-titre").textContent = "Rien à réviser pour l'instant"; $("jour-sous").textContent = "Importe un cours : une photo, un PDF, un Word, un PowerPoint ou un texte."; return; }
   if (onVacation()) { $("jour-titre").textContent = "Mode vacances"; $("jour-sous").textContent = "Repose-toi. Au retour, tes notions reviennent petit à petit, sans retard à rattraper d'un coup."; $("go").disabled = true; $("jour-suite").textContent = ""; return; }
   if (!n) { const next = Math.min(...db.notions.map(x => x.due || Infinity)); $("jour-titre").textContent = "Tout est à jour"; $("jour-sous").textContent = "Reviens " + when(next) + ". Ton cerveau a besoin de temps pour oublier un peu."; $("go").disabled = true; $("jour-suite").textContent = ""; return; }
-  const min = Math.max(1, sessionMin(q));
-  $("jour-titre").textContent = `${n} notion${n > 1 ? "s" : ""} · environ ${min} min`;
-  $("jour-sous").textContent = seanceInfo(q) || "Arrête-toi quand tu veux. Ce que tu ne fais pas aujourd'hui revient demain.";
+  const parts = blocsParMatiere(q), [m1, l1] = parts[0], min = Math.max(1, sessionMin(l1));
+  $("jour-titre").textContent = `${m1} · ${l1.length} notion${l1.length > 1 ? "s" : ""} · environ ${min} min`;
+  $("jour-sous").textContent = seanceInfo(q) || (parts.length > 1 ? "Une seule matière à la fois. Quand elle est finie, tu choisis : t'arrêter, ou passer à une autre." : "Arrête-toi quand tu veux. Ce que tu ne fais pas aujourd'hui revient demain.");
+  renderAutresMatieres(parts.slice(1));
   $("jour-suite").textContent = exs.length ? `${exs[0][0]} : examen ${when(exs[0][1])}` : "";
   $("go").disabled = false;
 }
@@ -167,15 +177,20 @@ function srcHTML(n) {
 }
 
 /* ---------- La séance ---------- */
-let queue = [], idx = 0, done = 0, stats = {1: 0, 2: 0, 3: 0}, shown = false;
-function startSession() {
-  queue = todayQueue(); idx = 0; done = 0; stats = {1: 0, 2: 0, 3: 0}; snap = null; $("undo").hidden = true;
-  if (!queue.length) return;
+let queue = [], idx = 0, done = 0, stats = {1: 0, 2: 0, 3: 0}, shown = false, seance = {mat: "", chap: ""};
+/* Une séance = une seule matière, ou un seul thème (chapitre) d'une matière. Jamais de mélange. */
+function startSession(opts) {
+  opts = opts && opts.mat ? opts : {};
+  const parts = blocsParMatiere(todayQueue()), m = opts.mat || (parts[0] && parts[0][0]) || "", chap = opts.chap || "";
+  let q = ((parts.find(p => p[0] === m) || [])[1] || []).filter(x => !chap || chapOf(x) === chap);
+  if (!q.length && opts.mat) q = entrainement(m, chap);   // rien de prévu aujourd'hui : on s'entraîne quand même sur ce thème
+  queue = q; seance = {mat: m, chap}; idx = 0; done = 0; stats = {1: 0, 2: 0, 3: 0}; snap = null; $("undo").hidden = true;
+  if (!queue.length) { note(chap ? "Rien à réviser dans ce thème pour l'instant." : "Rien à réviser dans cette matière pour l'instant.", "warn"); return; }
   $("accueil").hidden = true; $("tuiles").hidden = true; $("bilan").hidden = true; $("seance").hidden = false; showCard();
 }
 function showCard() {
   const n = queue[idx]; shown = false;
-  $("pos").textContent = `${idx + 1} sur ${queue.length} · ${matOf(n)}`;
+  $("pos").textContent = `${idx + 1} sur ${queue.length} · ${seance.mat || matOf(n)}${seance.chap ? " · " + seance.chap : ""}`;
   $("prog").style.width = Math.round(idx / queue.length * 100) + "%";
   if (n.enonce) mqShow(n); else { $("q-src").replaceChildren(srcHTML(n)); $("q-text").replaceChildren(holeHTML(n, false)); }
   $("voir").hidden = false; $("noter").hidden = true; $("voir").focus(); cardExtras(n);
@@ -201,10 +216,33 @@ function endSession() {
   $("seance").hidden = true; $("bilan").hidden = false; $("prog").style.width = "100%";
   const tot = stats[1] + stats[2] + stats[3];
   if (tot && idx >= queue.length && onceToday("jour")) gain(10, "révision du jour finie");
+  const fini = idx >= queue.length, nom = seance.mat + (seance.chap ? " · " + seance.chap : "");
+  $("bilan-h").textContent = fini ? `✓ ${nom} : c'est terminé` : `Tu t'arrêtes ici en ${nom}`;
   $("bilan-t").textContent = tot ? `${stats[3]} facile${stats[3] > 1 ? "s" : ""}, ${stats[2]} avec effort, ${stats[1]} raté${stats[1] > 1 ? "s" : ""}. Les notions difficiles reviendront plus tôt.` : "Tu reprendras plus tard.";
+  // Les autres matières ne démarrent jamais toutes seules : on prévient, et c'est l'élève qui choisit.
+  const autres = blocsParMatiere(todayQueue()).filter(p => p[0] !== seance.mat), box = $("bilan-suite"); box.replaceChildren();
+  if (autres.length) {
+    box.append(el("p", "msg warn", "⚠ La suite, c'est une autre matière. Tu peux t'arrêter là, c'est très bien. Ou choisir une autre matière :"));
+    const r = el("div", "row"); autres.forEach(([m, l]) => { const b = el("button", "", `Passer à ${m} (${l.length})`); b.addEventListener("click", () => startSession({mat: m})); r.append(b); }); box.append(r);
+  }
   renderToday(); renderList();
 }
-$("go").addEventListener("click", startSession);
+/* S'entraîner sur un thème même sans révision prévue : les notions les moins sûres d'abord. */
+function entrainement(m, chap, now = Date.now()) {
+  const l = db.notions.filter(n => !n.off && matOf(n) === m && (!chap || chapOf(n) === chap) && !finished(n, now));
+  return ordreMalin(l.sort((a, b) => (a.last ? retr(a, now) : -1) - (b.last ? retr(b, now) : -1)).slice(0, 15), now);
+}
+/* Sur l'accueil : les autres matières du jour, chacune en séance séparée. */
+function renderAutresMatieres(autres) {
+  const box = $("jour-mats"); if (!box) return; box.replaceChildren(); box.hidden = !autres.length; if (!autres.length) return;
+  box.append(el("span", "muted", "Aussi aujourd'hui, chacune à part :"));
+  autres.forEach(([m, l]) => { const b = el("button", "", `${m} · ${l.length}`); b.addEventListener("click", () => startSession({mat: m})); box.append(b); });
+}
+function remplirTheme() { fillMats($("th-mat")); $("th-mat").options[0].textContent = "Choisis une matière"; fillChapSel($("th-chap"), $("th-mat").value); $("th-chap").options[0].textContent = "Toute la matière"; }
+$("th-mat").addEventListener("change", () => { fillChapSel($("th-chap"), $("th-mat").value); $("th-chap").options[0].textContent = "Toute la matière"; });
+$("jour-theme").addEventListener("toggle", () => { if ($("jour-theme").open) remplirTheme(); });
+$("th-go").addEventListener("click", () => { const m = $("th-mat").value; if (!m) { note("Choisis d'abord une matière.", "warn"); return; } startSession({mat: m, chap: $("th-chap").value}); });
+$("go").addEventListener("click", () => startSession());
 $("voir").addEventListener("click", reveal);
 document.querySelectorAll("#noter .grades button").forEach(b => b.addEventListener("click", () => grade(Number(b.dataset.g))));
 $("quit").addEventListener("click", endSession);
@@ -835,7 +873,7 @@ try { setEsp(Number(localStorage.getItem("alto-esp")) || 0); } catch (e) { setEs
    de la même matière d'abord, et de longueur proche (pour que ce ne soit pas trop facile).
    Une notion à revoir ou nouvelle est notée dans l'algorithme : juste = « avec effort » (reconnaître est plus facile que retrouver), faux = « raté ». */
 const answerOf = n => holeWords(n).join(" ");
-function fillMats(sel) { const cur = sel.value; sel.replaceChildren(); const all = document.createElement("option"); all.value = ""; all.textContent = "Toutes les matières"; sel.append(all);
+function fillMats(sel) { const cur = sel.value; sel.replaceChildren(); const all = document.createElement("option"); all.value = ""; all.textContent = "⚠ Toutes les matières, mélangées"; sel.append(all);
   matsWithNotions().forEach(m => { const o = document.createElement("option"); o.value = o.textContent = m; sel.append(o); }); if ([...sel.options].some(o => o.value === cur)) sel.value = cur; }
 const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 function distractorsN(n, k = 3) {
@@ -876,7 +914,8 @@ function pool() { const m = $("tr-mat").value; return db.notions.filter(n => (!m
 function quizStart() {
   const now = Date.now(), p = pool().sort((a, b) => ((a.last ? a.due : 0) <= now ? 0 : 1) - ((b.last ? b.due : 0) <= now ? 0 : 1) || Math.random() - .5);
   if (p.length < 1 || db.notions.filter(n => answerOf(n)).length < 4) { note("Il faut au moins 4 notions pour les questions à trous.", "warn"); return; }
-  qz = {list: ordreMalin(p.slice(0, 10)), i: 0, ok: 0, last: "", cur: null}; $("tr-end").hidden = true; $("qz").hidden = false; quizShow();
+  const trList = ordreMalin(p.slice(0, 10)); if (!accepteMelange(trList, "Ces questions à trous")) return;
+  qz = {list: trList, i: 0, ok: 0, last: "", cur: null}; $("tr-end").hidden = true; $("qz").hidden = false; quizShow();
 }
 function quizShow() {
   const n = qz.list[qz.i], ty = qTypes(n); let t = ty[Math.floor(Math.random() * ty.length)];
@@ -938,6 +977,7 @@ let mt = {sel: null, left: 0};
 function matchStart() {
   const p = shuffle(db.notions.filter(n => !n.off && answerOf(n) && (!$("jx-mat").value || matOf(n) === $("jx-mat").value))).filter((n, i, a) => a.findIndex(x => norm(answerOf(x)) === norm(answerOf(n))) === i).slice(0, 5);
   if (p.length < 3) { note("Il faut au moins 3 notions dans cette matière pour jouer.", "warn"); return; }
+  if (!accepteMelange(p, "Ce jeu")) return;
   $("jx-end").hidden = true; $("qc").hidden = true; $("mt").hidden = false; mt = {sel: null, left: p.length};
   const L = $("mt-l"), R = $("mt-r"); L.replaceChildren(); R.replaceChildren();
   shuffle([...p]).forEach(n => { const b = document.createElement("button"); b.textContent = answerOf(n); b.dataset.id = n.id;
@@ -1078,7 +1118,8 @@ function exStart() {
   if (ns.length < 4) { note("Il faut au moins 4 notions dans cette matière pour un examen.", "warn"); return; }
   const kinds = ["qcm", "trou", "ouv"];
   const qs = ns.slice(0, nb).map((n, i) => ({n, k: form === "mix" ? (keyWords(n).length >= 2 ? kinds[i % 3] : kinds[i % 2]) : (form === "ouv" && keyWords(n).length < 2 ? "trou" : form), a: null}));
-  ex = {qs: mqExam(qs, m, form, nb), i: 0, end: dur ? Date.now() + dur * 1000 : 0};
+  const exQs = mqExam(qs, m, form, nb); if (!accepteMelange(exQs.map(q => q.n || q), "Cet examen blanc")) return;
+  ex = {qs: exQs, i: 0, end: dur ? Date.now() + dur * 1000 : 0};
   $("ex-conf").hidden = true; $("ex-res").hidden = true; $("ex-run").hidden = false; exShow();
   clearInterval(exTimer); exTimer = setInterval(exTick, 1000); exTick();
 }
@@ -1572,7 +1613,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.13";
+const VERSION = "1.14";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -1980,6 +2021,7 @@ function cqItemsBase(m, ch) { return moteurItems(m, ch).concat([...db.notions.fi
 function cqStart(items) {
   const list = cqBuild(items || cqItems($("jx-mat").value, $("jx-chap").value), 10);
   if (!list.length) { note("Pas assez de matière pour un quiz. Ajoute des notions avec leur définition, des exercices ou des cartes (« Mes cours » → « Créer à la main »).", "warn"); return; }
+  if (!accepteMelange(list.map(q => q.x), "Ce quiz")) return;
   if (list.length < 3) note("Petit quiz : ajoute des notions ou des exercices pour avoir plus de questions.", "warn");
   cq = {list, i: 0, ok: 0, miss: []}; $("jx-end").hidden = true; $("mt").hidden = true; $("qc").hidden = false; cqShow();
 }
@@ -2320,8 +2362,8 @@ function mqRevision(now) {
   const fresh = Math.max(0, 2 - db.mqNew.n) ? NoteaMoteur.choisirQuestions(bank.filter(q => !q.last), profil(), 2 - db.mqNew.n, now) : [];
   return due.concat(fresh).slice(0, 3).map(mqPrep);
 }
-function mixMQ(list, now) {
-  const mq = mqRevision(now); if (!mq.length) return list;
+function mixMQ(list, now, mq) {
+  mq = mq || mqRevision(now); if (!mq.length) return list;
   const out = list.slice(), step = Math.max(2, Math.floor(out.length / (mq.length + 1)));
   mq.forEach((q, i) => out.splice(Math.min(out.length, (i + 1) * step + i), 0, q));
   return out;
@@ -2495,7 +2537,7 @@ function renderPlan2(p) {
       if (d.revisions) c.append(el("span", "chip", `🔁 ${d.revisions} révision${d.revisions > 1 ? "s" : ""}`));
       d.acts.forEach(a => c.append(el("span", "chip imp", ACT[a][0] + " " + ACT[a][1])));
       if (!d.nouvelles && !d.revisions && !d.acts.length) c.append(el("span", "muted", d.i === 0 && (db.log || []).some(x => x[0] >= jour0(Date.now())) ? "✓ C'est fait pour aujourd'hui. Bravo !" : "Repos : ton cerveau consolide."));
-      if (d.i === 0 && (d.nouvelles || d.revisions)) { const b = el("button", "primary", "Commencer ma séance"); b.addEventListener("click", () => { tab("jour"); startSession(); }); c.append(b); }
+      if (d.i === 0 && (d.nouvelles || d.revisions)) { const b = el("button", "primary", "Commencer ma séance"); b.addEventListener("click", () => { tab("jour"); startSession({mat: p.m}); }); c.append(b); }
     }
     li.append(h, c); list.append(li); });
   box.append(list);
@@ -3104,6 +3146,17 @@ function monte(x, t) {
 }
 
 
+/* ---------- Version 1.14 : jamais de mélange de matières sans prévenir ---------- */
+/* Si une liste mélange plusieurs matières, on le dit toujours, et l'élève choisit. */
+function accepteMelange(items, quoi) {
+  const ms = [...new Set(items.filter(Boolean).map(matOf))];
+  if (ms.length < 2) return true;
+  return confirm(`⚠ Attention : ${quoi.toLowerCase()} mélange ${ms.length} matières : ${ms.join(", ")}.
+
+OK : je veux mélanger.
+Annuler : je choisis une seule matière.`);
+}
+
 /* ---------- Version 1.13 ---------- */
 /* Les matières qui ont leur propre examen dans les 7 jours, la plus proche d'abord. */
 function examPrio(now = Date.now()) {
@@ -3117,7 +3170,7 @@ function seanceInfo(q) {
   const m = prio[0], j = joursAvant(dueTime(m), Date.now()), n1 = q.filter(x => matOf(x) === m).length, n2 = q.length - n1;
   const quand = j === 0 ? "aujourd'hui" : j === 1 ? "demain" : "dans " + j + " jours";
   if (!n1) return "Examen de " + m + " " + quand + " : rien de prévu aujourd'hui pour cette matière, ton plan est à jour.";
-  return "D'abord " + m + " (examen " + quand + ") : " + n1 + " notion" + (n1 > 1 ? "s" : "") + "." + (n2 ? " Ensuite " + n2 + " notion" + (n2 > 1 ? "s" : "") + " d'autres matières." : "");
+  return "On commence par " + m + " (examen " + quand + "), et seulement " + m + "." + (n2 ? " Les autres matières attendent : tu choisis à la fin si tu continues." : "");
 }
 
 /* ---------- Créer mes fiches : un écran à part, le strict minimum ---------- */

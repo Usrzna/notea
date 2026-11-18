@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600..800&family=Nunito:wght@400..900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/notea.css?v=1.13">
+<link rel="stylesheet" href="css/notea.css?v=1.14">
 </head>
 <body>
 
@@ -103,6 +103,11 @@
           <div class="row" id="vide" hidden><button class="primary" id="vide-imp"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>Importer un cours</button></div>
         </div>
         <p class="muted" id="jour-sous"></p><span class="muted" id="jour-suite"></span>
+        <div class="row" id="jour-mats" hidden></div>
+        <details id="jour-theme">
+          <summary>Réviser une seule matière ou un seul thème</summary>
+          <div class="row"><label for="th-mat"><b>Matière</b></label><select id="th-mat" style="flex:1 1 180px"></select><label for="th-chap"><b>Thème</b></label><select id="th-chap" style="flex:1 1 180px"></select><button class="primary" id="th-go">Lancer</button></div>
+        </details>
       </div>
       <div class="card" id="exam-today" hidden></div>
     </div>
@@ -132,9 +137,10 @@
     </div>
 
     <div class="card" id="bilan" hidden>
-      <h2>Bravo, c'est fini pour aujourd'hui</h2>
+      <h2 id="bilan-h">Bravo, c'est fini pour aujourd'hui</h2>
       <p id="bilan-t"></p>
-      <div class="row"><button class="primary" id="bilan-ok">Revenir</button></div>
+      <div class="row"><button class="primary" id="bilan-ok">J'arrête là</button></div>
+      <div id="bilan-suite" class="stack"></div>
     </div>
   </section>
 
@@ -695,18 +701,18 @@
 <datalist id="chap-list"></datalist>
 <div id="sheet"></div>
 <div class="ruler" id="ruler-t" hidden></div><div class="ruler" id="ruler-b" hidden></div>
-<script src="js/moteur/00-outils.js?v=1.13"></script>
-<script src="js/moteur/01-ingestion.js?v=1.13"></script>
-<script src="js/moteur/02-classification.js?v=1.13"></script>
-<script src="js/moteur/03-semantique.js?v=1.13"></script>
-<script src="js/moteur/04-pertinence.js?v=1.13"></script>
-<script src="js/moteur/05-graphe.js?v=1.13"></script>
-<script src="js/moteur/06-pedagogie.js?v=1.13"></script>
-<script src="js/moteur/07-eleve.js?v=1.13"></script>
-<script src="js/moteur/08-generation.js?v=1.13"></script>
-<script src="js/moteur/09-schemas.js?v=1.13"></script>
-<script src="js/moteur/10-adaptation.js?v=1.13"></script>
-<script src="js/moteur/11-pipeline.js?v=1.13"></script>
-<script src="js/app.js?v=1.13"></script>
+<script src="js/moteur/00-outils.js?v=1.14"></script>
+<script src="js/moteur/01-ingestion.js?v=1.14"></script>
+<script src="js/moteur/02-classification.js?v=1.14"></script>
+<script src="js/moteur/03-semantique.js?v=1.14"></script>
+<script src="js/moteur/04-pertinence.js?v=1.14"></script>
+<script src="js/moteur/05-graphe.js?v=1.14"></script>
+<script src="js/moteur/06-pedagogie.js?v=1.14"></script>
+<script src="js/moteur/07-eleve.js?v=1.14"></script>
+<script src="js/moteur/08-generation.js?v=1.14"></script>
+<script src="js/moteur/09-schemas.js?v=1.14"></script>
+<script src="js/moteur/10-adaptation.js?v=1.14"></script>
+<script src="js/moteur/11-pipeline.js?v=1.14"></script>
+<script src="js/app.js?v=1.14"></script>
 </body>
 </html>
