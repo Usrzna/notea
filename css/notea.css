@@ -578,3 +578,19 @@ body.side-auto .top .brand{display:flex;padding:0;font-size:18px} body.side-auto
 body.side-auto::before{content:"";position:fixed;left:0;top:30%;bottom:30%;width:5px;border-radius:0 6px 6px 0;background:var(--accent);opacity:.35;z-index:39}
 body.side-auto.side-on::before,body.zen::before{display:none}
 @media (prefers-reduced-motion:reduce){body.side-auto .side{transition:none}}
+
+/* ---------- Version 1.15 ---------- */
+/* Trois mesures séparées : pertinence, compréhension, mémoire */
+.mesures{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;margin-top:6px}
+.mes-l{font-size:12px} .mes-l:not(:first-child){margin-left:6px}
+.mes{display:inline-flex;align-items:center;font-size:13px;font-weight:700;padding:2px 9px;border-radius:var(--radius-pill);background:var(--surface-2);color:var(--text)}
+.mes.p3{background:var(--hl);color:var(--on-hl)} .mes.p1{color:var(--text-2)}
+.mes.ok{background:var(--success-soft);color:var(--success)} .mes.revoir{background:var(--danger-soft);color:var(--danger)} .mes.cours{background:var(--accent-soft);color:var(--accent-text)}
+/* Le parcours de l'examen */
+.pc-titre{justify-content:space-between;align-items:center} .pc-titre h2{margin:0}
+.parcours{display:flex;flex-direction:column;gap:var(--space-3);margin:var(--space-3) 0}
+.pc-h{display:flex;flex-direction:column;gap:6px}
+.pc-steps{list-style:none;margin:0;padding:0 0 4px;display:flex;gap:var(--space-2);overflow-x:auto}
+.pc-step{flex:0 0 auto;min-width:104px;display:flex;flex-direction:column;gap:2px;padding:var(--space-2) var(--space-3);border-radius:var(--radius-md);border:1px solid var(--line);background:var(--surface-2);font-size:14px}
+.pc-step.now{border:2px solid var(--accent);background:var(--accent-soft)}
+.pc-step.jj{border-color:var(--hl)} .pc-step.more{justify-content:center;min-width:40px}

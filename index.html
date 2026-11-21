@@ -13,7 +13,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600..800&family=Nunito:wght@400..900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/notea.css?v=1.14">
+<link rel="stylesheet" href="css/notea.css?v=1.15">
 </head>
 <body>
 
@@ -94,6 +94,7 @@
         <div class="kpi"><svg class="ic" aria-hidden="true"><use href="#i-stack"/></svg><b id="st-n">0</b><span>notions<br>aujourd'hui</span></div>
         <div class="kpi ok"><svg class="ic" aria-hidden="true"><use href="#i-progres"/></svg><b id="st-pc">0 %</b><span>de progression</span></div>
       </div>
+      <div class="card" id="exam-today" hidden></div>
       <div class="card">
         <h2>Ma prochaine session</h2>
         <div class="session">
@@ -109,7 +110,6 @@
           <div class="row"><label for="th-mat"><b>Matière</b></label><select id="th-mat" style="flex:1 1 180px"></select><label for="th-chap"><b>Thème</b></label><select id="th-chap" style="flex:1 1 180px"></select><button class="primary" id="th-go">Lancer</button></div>
         </details>
       </div>
-      <div class="card" id="exam-today" hidden></div>
     </div>
 
     <div id="pref" class="muted" hidden></div>
@@ -260,6 +260,7 @@
       <h2>Modifier la notion</h2>
       <div class="row"><b>Type</b><span class="seg2" id="ed-kind" role="group" aria-label="Type de notion"><button data-k="def" class="on">Définition</button><button data-k="concept">Concept</button><button data-k="form">Formule</button><button data-k="date">Date</button><button data-k="info">À retenir</button><button data-k="regle">Règle</button><button data-k="q">Question</button></span></div>
       <div class="row"><label for="ed-term"><b>Terme</b></label><input type="text" id="ed-term" style="flex:1 1 200px"><label for="ed-chap"><b>Chapitre</b></label><input type="text" id="ed-chap" list="chap-list" style="flex:1 1 200px"></div>
+      <div class="row"><b>Pertinence</b><span class="seg2" id="ed-pert" role="group" aria-label="Pertinence pour l'examen"><button data-p="3">★★★ Essentielle</button><button data-p="2" class="on">★★ Utile</button><button data-p="1">★ Détail</button></span><span class="muted">L'importance pour l'examen. Ce n'est pas la même chose que « compris ».</span></div>
       <div class="fld"><label for="ed-def">Définition ou contenu</label><textarea id="ed-def"></textarea></div>
       <div class="fld"><label for="ed-ex">Exemple</label><textarea id="ed-ex"></textarea></div>
       <div class="fld"><label for="ed-why">Explication</label><textarea id="ed-why"></textarea></div>
@@ -701,18 +702,18 @@
 <datalist id="chap-list"></datalist>
 <div id="sheet"></div>
 <div class="ruler" id="ruler-t" hidden></div><div class="ruler" id="ruler-b" hidden></div>
-<script src="js/moteur/00-outils.js?v=1.14"></script>
-<script src="js/moteur/01-ingestion.js?v=1.14"></script>
-<script src="js/moteur/02-classification.js?v=1.14"></script>
-<script src="js/moteur/03-semantique.js?v=1.14"></script>
-<script src="js/moteur/04-pertinence.js?v=1.14"></script>
-<script src="js/moteur/05-graphe.js?v=1.14"></script>
-<script src="js/moteur/06-pedagogie.js?v=1.14"></script>
-<script src="js/moteur/07-eleve.js?v=1.14"></script>
-<script src="js/moteur/08-generation.js?v=1.14"></script>
-<script src="js/moteur/09-schemas.js?v=1.14"></script>
-<script src="js/moteur/10-adaptation.js?v=1.14"></script>
-<script src="js/moteur/11-pipeline.js?v=1.14"></script>
-<script src="js/app.js?v=1.14"></script>
+<script src="js/moteur/00-outils.js?v=1.15"></script>
+<script src="js/moteur/01-ingestion.js?v=1.15"></script>
+<script src="js/moteur/02-classification.js?v=1.15"></script>
+<script src="js/moteur/03-semantique.js?v=1.15"></script>
+<script src="js/moteur/04-pertinence.js?v=1.15"></script>
+<script src="js/moteur/05-graphe.js?v=1.15"></script>
+<script src="js/moteur/06-pedagogie.js?v=1.15"></script>
+<script src="js/moteur/07-eleve.js?v=1.15"></script>
+<script src="js/moteur/08-generation.js?v=1.15"></script>
+<script src="js/moteur/09-schemas.js?v=1.15"></script>
+<script src="js/moteur/10-adaptation.js?v=1.15"></script>
+<script src="js/moteur/11-pipeline.js?v=1.15"></script>
+<script src="js/app.js?v=1.15"></script>
 </body>
 </html>
