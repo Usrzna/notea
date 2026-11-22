@@ -7,13 +7,18 @@
 <meta name="description" content="Notéa aide les élèves dys et TDAH à comprendre, apprendre et retenir leurs cours. Conçu pour les dys, utile à tous.">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="img/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Notéa">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#F2EDFC" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#140E20" media="(prefers-color-scheme: dark)">
 <script>try{var t=localStorage.getItem("notea-theme");if(t&&t!=="auto")document.documentElement.dataset.theme=t;var f=localStorage.getItem("notea-police");if(f)document.documentElement.dataset.font=f}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400..900;1,700..900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/notea.css?v=1.16">
+<link rel="stylesheet" href="css/notea.css?v=1.17">
 </head>
 <body>
 
@@ -605,6 +610,13 @@
 
   <!-- ===== Réglages ===== -->
   <section id="tab-reglages" class="stack" hidden>
+    <div class="card" id="installer">
+      <h2>Notéa sur ton téléphone</h2>
+      <p class="muted" id="inst-t">Installe Notéa comme une appli : une icône sur l'écran d'accueil, en plein écran, et ça marche même sans internet.</p>
+      <div class="row"><button class="primary" id="inst-go" hidden>Installer Notéa</button></div>
+      <ol class="steps" id="inst-ios" hidden><li>Ouvre Notéa dans <b>Safari</b>.</li><li>Touche le bouton <b>Partager</b> (le carré avec une flèche).</li><li>Choisis <b>« Sur l'écran d'accueil »</b>, puis <b>Ajouter</b>.</li></ol>
+      <ol class="steps" id="inst-autre" hidden><li>Ouvre Notéa dans <b>Chrome</b>.</li><li>Touche le menu <b>⋮</b> en haut à droite.</li><li>Choisis <b>« Installer l'application »</b> ou <b>« Ajouter à l'écran d'accueil »</b>.</li></ol>
+    </div>
     <div class="card">
       <h2>Moi</h2>
       <div class="row"><label for="nom"><b>Mon prénom</b></label><input type="text" id="nom" placeholder="Par exemple : Simon" autocomplete="given-name" style="flex:1 1 200px"></div>
@@ -703,18 +715,18 @@
 <datalist id="chap-list"></datalist>
 <div id="sheet"></div>
 <div class="ruler" id="ruler-t" hidden></div><div class="ruler" id="ruler-b" hidden></div>
-<script src="js/moteur/00-outils.js?v=1.16"></script>
-<script src="js/moteur/01-ingestion.js?v=1.16"></script>
-<script src="js/moteur/02-classification.js?v=1.16"></script>
-<script src="js/moteur/03-semantique.js?v=1.16"></script>
-<script src="js/moteur/04-pertinence.js?v=1.16"></script>
-<script src="js/moteur/05-graphe.js?v=1.16"></script>
-<script src="js/moteur/06-pedagogie.js?v=1.16"></script>
-<script src="js/moteur/07-eleve.js?v=1.16"></script>
-<script src="js/moteur/08-generation.js?v=1.16"></script>
-<script src="js/moteur/09-schemas.js?v=1.16"></script>
-<script src="js/moteur/10-adaptation.js?v=1.16"></script>
-<script src="js/moteur/11-pipeline.js?v=1.16"></script>
-<script src="js/app.js?v=1.16"></script>
+<script src="js/moteur/00-outils.js?v=1.17"></script>
+<script src="js/moteur/01-ingestion.js?v=1.17"></script>
+<script src="js/moteur/02-classification.js?v=1.17"></script>
+<script src="js/moteur/03-semantique.js?v=1.17"></script>
+<script src="js/moteur/04-pertinence.js?v=1.17"></script>
+<script src="js/moteur/05-graphe.js?v=1.17"></script>
+<script src="js/moteur/06-pedagogie.js?v=1.17"></script>
+<script src="js/moteur/07-eleve.js?v=1.17"></script>
+<script src="js/moteur/08-generation.js?v=1.17"></script>
+<script src="js/moteur/09-schemas.js?v=1.17"></script>
+<script src="js/moteur/10-adaptation.js?v=1.17"></script>
+<script src="js/moteur/11-pipeline.js?v=1.17"></script>
+<script src="js/app.js?v=1.17"></script>
 </body>
 </html>

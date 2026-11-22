@@ -1615,7 +1615,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.16";
+const VERSION = "1.17";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -3207,6 +3207,22 @@ $("zen-astuce-x").addEventListener("click", () => { $("zen-astuce").hidden = tru
 document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && document.body.classList.contains("zen")) zenOff(); });
 /* En concentration, les messages de points et de niveaux se taisent : seuls restent les messages utiles (Annuler, erreurs). */
 { const n0 = $("note"); new MutationObserver(() => { if (document.body.classList.contains("zen") && !n0.hidden && /XP|plume|niveau|Niveau|\+\d/.test(n0.textContent) && !n0.querySelector("button")) n0.hidden = true; }).observe(n0, {childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["hidden"]}); }
+
+/* ---------- Appli installable sur téléphone (PWA) : hors connexion + bouton « Installer » ---------- */
+{
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) navigator.serviceWorker.register("sw.js").catch(() => {});
+  let invite = null;
+  const installee = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const montrer = () => {
+    if (installee()) { $("inst-t").textContent = "Notéa est installée sur cet appareil. Tu peux l'ouvrir depuis ton écran d'accueil."; ["inst-go", "inst-ios", "inst-autre"].forEach(id => $(id).hidden = true); return; }
+    $("inst-go").hidden = !invite; $("inst-ios").hidden = !!invite || !ios; $("inst-autre").hidden = !!invite || ios;
+  };
+  addEventListener("beforeinstallprompt", e => { e.preventDefault(); invite = e; montrer(); });
+  addEventListener("appinstalled", () => { invite = null; montrer(); note("Notéa est installée. Cherche l'icône du singe sur ton écran d'accueil.", "ok"); });
+  $("inst-go").addEventListener("click", async () => { if (!invite) return; invite.prompt(); try { await invite.userChoice; } catch (e) {} invite = null; montrer(); });
+  montrer();
+}
 
 /* ---------- Le menu de gauche sort quand la souris va à gauche, et se cache quand elle part ---------- */
 {

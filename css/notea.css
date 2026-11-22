@@ -630,3 +630,6 @@ h2{font-size:22px}
 @media (max-width:520px){.page-masc{width:76px}.top>.row>button:not(#zen),.top .xp{padding:6px 10px}}
 body.zen .page-masc{display:none!important}
 .top .back{align-self:flex-start}
+
+/* Appli installée (plein écran) : laisser la place à l'encoche et à la barre du haut */
+@media (display-mode: standalone){.main{padding-top:max(var(--space-4),env(safe-area-inset-top))}}

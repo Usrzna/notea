@@ -1,1 +1,8 @@
-{"name": "Notéa", "short_name": "Notéa", "description": "Comprendre, apprendre et retenir ses cours. Conçu pour les dys, utile à tous.", "start_url": "./", "scope": "./", "display": "standalone", "background_color": "#F2EDFC", "theme_color": "#F2EDFC", "lang": "fr", "icons": [{"src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}]}
+{"id": "./", "name": "Notéa", "short_name": "Notéa", "description": "Comprendre, apprendre et retenir ses cours. Conçu pour les dys, utile à tous.",
+ "start_url": "./", "scope": "./", "display": "standalone", "orientation": "any", "background_color": "#F2EDFC", "theme_color": "#F2EDFC", "lang": "fr",
+ "icons": [
+  {"src": "img/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+  {"src": "img/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+  {"src": "img/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+  {"src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}
+ ]}
