@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400..900;1,700..900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/notea.css?v=1.17">
+<link rel="stylesheet" href="css/notea.css?v=2.0">
 </head>
 <body>
 
@@ -100,6 +100,7 @@
         <div class="kpi"><svg class="ic" aria-hidden="true"><use href="#i-stack"/></svg><b id="st-n">0</b><span>notions<br>aujourd'hui</span></div>
         <div class="kpi ok"><svg class="ic" aria-hidden="true"><use href="#i-progres"/></svg><b id="st-pc">0 %</b><span>de progression</span></div>
       </div>
+      <div class="card tableau" id="tableau" hidden></div>
       <div class="card" id="exam-today" hidden></div>
       <div class="card">
         <h2>Ma prochaine session</h2>
@@ -225,6 +226,7 @@
       <textarea id="imp-text" placeholder="Ou colle ton cours ici"></textarea>
       <div class="row"><button class="primary" id="imp-read">Lire le cours</button></div>
     </div>
+    <div class="card" id="imp-ok" hidden role="status"></div>
     <div class="card" id="pick-card" hidden>
       <h2>Comprendre le cours</h2>
       <p class="muted">Notéa a découpé ton cours : le plan, les mots clés rangés par importance, et le rôle de chaque phrase (définition, exemple, règle…). Les phrases essentielles sont déjà surlignées. Touche une phrase pour la surligner ou l'enlever.</p>
@@ -715,18 +717,19 @@
 <datalist id="chap-list"></datalist>
 <div id="sheet"></div>
 <div class="ruler" id="ruler-t" hidden></div><div class="ruler" id="ruler-b" hidden></div>
-<script src="js/moteur/00-outils.js?v=1.17"></script>
-<script src="js/moteur/01-ingestion.js?v=1.17"></script>
-<script src="js/moteur/02-classification.js?v=1.17"></script>
-<script src="js/moteur/03-semantique.js?v=1.17"></script>
-<script src="js/moteur/04-pertinence.js?v=1.17"></script>
-<script src="js/moteur/05-graphe.js?v=1.17"></script>
-<script src="js/moteur/06-pedagogie.js?v=1.17"></script>
-<script src="js/moteur/07-eleve.js?v=1.17"></script>
-<script src="js/moteur/08-generation.js?v=1.17"></script>
-<script src="js/moteur/09-schemas.js?v=1.17"></script>
-<script src="js/moteur/10-adaptation.js?v=1.17"></script>
-<script src="js/moteur/11-pipeline.js?v=1.17"></script>
-<script src="js/app.js?v=1.17"></script>
+<script src="js/moteur/00-outils.js?v=2.0"></script>
+<script src="js/moteur/01-ingestion.js?v=2.0"></script>
+<script src="js/moteur/02-classification.js?v=2.0"></script>
+<script src="js/moteur/03-semantique.js?v=2.0"></script>
+<script src="js/moteur/04-pertinence.js?v=2.0"></script>
+<script src="js/moteur/05-graphe.js?v=2.0"></script>
+<script src="js/moteur/06-pedagogie.js?v=2.0"></script>
+<script src="js/moteur/07-eleve.js?v=2.0"></script>
+<script src="js/moteur/08-generation.js?v=2.0"></script>
+<script src="js/moteur/09-schemas.js?v=2.0"></script>
+<script src="js/moteur/10-adaptation.js?v=2.0"></script>
+<script src="js/moteur/11-pipeline.js?v=2.0"></script>
+<script src="js/parcours.js?v=2.0"></script>
+<script src="js/app.js?v=2.0"></script>
 </body>
 </html>

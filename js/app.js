@@ -119,8 +119,8 @@ function todayQueue(now = Date.now()) {
   const live = db.notions.filter(n => !finished(n, now) && !n.off);
   // d'abord ce qui s'oublie le plus, dans les matières qui comptent le plus et dont l'examen approche
   const due = live.filter(n => n.last && n.due <= end.getTime()).sort((a, b) => (1 - retr(b, now)) * weight(matOf(b), now) - (1 - retr(a, now)) * weight(matOf(a), now));
-  const fresh = live.filter(n => !n.last).sort((a, b) => weight(matOf(b), now) - weight(matOf(a), now) || pertOf(b) - pertOf(a) || (b.mark === "dif" || b.mark === "q") - (a.mark === "dif" || a.mark === "q") || a.created - b.created)
-    .slice(0, Math.max(0, newQuota(now) - db.newToday));
+  const fresh0 = live.filter(n => !n.last).sort((a, b) => weight(matOf(b), now) - weight(matOf(a), now) || pertOf(b) - pertOf(a) || (b.mark === "dif" || b.mark === "q") - (a.mark === "dif" || a.mark === "q") || (a.rang == null ? 999 : a.rang) - (b.rang == null ? 999 : b.rang) || a.created - b.created);
+  const fresh = (NP ? NP.ordreAvecPrerequis(fresh0) : fresh0).slice(0, Math.max(0, newQuota(now) - db.newToday));
   // un examen dans les 7 jours : ses notions passent avant tout le reste
   const prio = examPrio(now), rang = n => { const i = prio.indexOf(matOf(n)); return i < 0 ? prio.length : i; };
   const cands = due.concat(fresh).map((n, k) => [n, k]).sort((a, b) => rang(a[0]) - rang(b[0]) || a[1] - b[1]).map(p => p[0]);
@@ -139,7 +139,7 @@ function blocsParMatiere(list) {
   return ordre.map(m => [m, map.get(m)]);
 }
 function renderToday() {
-  const q = todayQueue(), n = q.length; homeStats(q); renderExamToday(); renderAutresMatieres([]);
+  const q = todayQueue(), n = q.length; homeStats(q); renderExamToday(); renderTableau(); renderAutresMatieres([]);
   $("bienvenue").hidden = !!db.notions.length; $("accueil").hidden = !db.notions.length && $("seance").hidden;
   const exs = [...new Set(db.notions.map(matOf))].map(m => [m, dueTime(m)]).filter(x => x[1] > Date.now()).sort((a, b) => a[1] - b[1]);
   if ($("tuile-plan")) $("tuile-plan").textContent = exs.length ? `Prochaine échéance : ${exs[0][0]}, ${when(exs[0][1])}.` : "Ajoute tes échéances et tes coefficients : le planning se fait tout seul.";
@@ -207,8 +207,9 @@ function reveal() {
 function grade(g) {
   if (!shown) return; const n = queue[idx]; takeSnap(n);
   if (!n.last) { if (n.enonce) (db.mqNew = db.mqNew || {day: today(), n: 0}).n++; else db.newToday++; }
-  schedule(n, g, Date.now()); if (n.enonce) { moteurNote(n, n._score != null ? n._score : g === 1 ? 0 : g === 2 ? 0.75 : 1); delete n._score; } stats[g]++; save();
+  schedule(n, g, Date.now()); suivre(n, "rappel", g === 1 ? 0 : g === 2 ? 0.6 : 1); if (n.enonce) { moteurNote(n, n._score != null ? n._score : g === 1 ? 0 : g === 2 ? 0.75 : 1); delete n._score; } stats[g]++; save();
   if (onceToday("n" + n.id)) gain(n.reps === 1 ? 3 : 2, "révision");
+  if (g === 1 && NP && n.text) { const bl = NP.prerequisBloquants(n, notionsParId()).filter(p => !queue.slice(idx + 1).includes(p)); if (bl[0]) queue.splice(idx + 1, 0, bl[0]); }   // la lacune d'abord
   if (g === 1 && queue.slice(idx + 1).filter(x => x === n).length === 0) remettre(queue, idx, n);   // « Raté » : elle revient plus tard, pas tout de suite
   else done++;
   idx++;
@@ -572,7 +573,8 @@ $("imp-read").addEventListener("click", () => {
   if (text.split(/\s+/).length < 5) { note("Colle un cours ou choisis un fichier d'abord.", "warn"); return; }
   ana = analyse(sansReperes(text)); renderAna();
   lancerMoteur(text, $("imp-mat").value.trim());
-  autoPick(); $("pick-card").hidden = false; $("pick-card").scrollIntoView({block: "start", behavior: "smooth"});
+  $("imp-ok").hidden = true;
+  if (!importAuto()) { autoPick(); $("pick-card").hidden = false; $("pick-card").scrollIntoView({block: "start", behavior: "smooth"}); }   // v2.0 : sans rien surligner
 });
 function countPicks() { const n = picks.filter(x => x.on).length; $("pick-n").textContent = `${n} phrase${n > 1 ? "s" : ""} surlignée${n > 1 ? "s" : ""}`; $("pick-go").textContent = n ? `Créer ${n} notion${n > 1 ? "s" : ""}` : "Créer les notions"; }
 function autoPick() { picks.forEach(x => { const w = x.text.split(/\s+/).length; x.on = (x.o ? x.o.ess : DEF.test(x.text)) && w <= 40; x.el.classList.toggle("on", x.on); }); countPicks(); }
@@ -962,7 +964,7 @@ function quizAnswer(btn, good, other) {
   if (good) qz.ok++;
   if (c.t === "trou") $("qz-q").replaceChildren(holeHTML(n, true));
   showWhy(n, good, other, btn ? "" : c.good);
-  if (!n.last || n.due <= now) { if (!n.last) db.newToday++; schedule(n, good ? 2 : 1, now); save(); }
+  if (!n.last || n.due <= now) { if (!n.last) db.newToday++; schedule(n, good ? 2 : 1, now); } suivre(n, "trou", good ? 1 : 0, {choix: good ? null : other, now}); save();
   if (onceToday("n" + n.id)) gainN(1, "quiz");
   $("qz-next").hidden = false; $("qz-next").textContent = qz.i + 1 < qz.list.length ? "Suivante" : "Voir le score"; $("qz-next").focus();
 }
@@ -1615,7 +1617,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.17";
+const VERSION = "2.0";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -1740,7 +1742,9 @@ $("version").textContent = "Version " + VERSION;
 var impOpen = false;
 function svgIc(n) { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("class", "ic"); s.setAttribute("aria-hidden", "true"); const u = document.createElementNS("http://www.w3.org/2000/svg", "use"); u.setAttribute("href", "#i-" + n); s.append(u); return s; }
 function el(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt !== undefined) e.textContent = txt; return e; }
-function mastery(ns, now) { return ns.length ? Math.round(ns.reduce((s, n) => s + retr(n, now), 0) / ns.length * 100) : 0; }
+function mastery(ns, now) {   // v2.0 : partout la même maîtrise réelle (5 dimensions, pondérée par la pertinence)
+  if (typeof NP !== "undefined" && NP && ns.length) { let s = 0, t = 0; ns.forEach(n => { const w = pertOf(n); s += w * NP.maitrise(n, now); t += w; }); return Math.round(s / t * 100); }
+  return ns.length ? Math.round(ns.reduce((s, n) => s + retr(n, now), 0) / ns.length * 100) : 0; }
 
 /* ---------- L'en-tête de chaque page : un retour clair, un titre, une phrase ---------- */
 const SUBS = {jour: "Aujourd'hui : un petit moment, rien de plus.", planning: "Tes cours, tes activités, et tes révisions placées toutes seules.", notions: "", notes: "Chaque notion avance toute seule quand tu la réussis.",
@@ -1760,7 +1764,7 @@ function pageHead(name) {
 function homeStats(q) {
   const now = Date.now(), live = db.notions.filter(n => !finished(n, now) && !n.off);
   $("st-min").textContent = q.length ? Math.max(1, sessionMin(q)) : 0;
-  $("st-n").textContent = q.length; $("st-pc").textContent = mastery(live, now) + " %";
+  $("st-n").textContent = q.length; $("st-pc").textContent = (NP ? NP.tableau(db.notions, q, now, pertOf).progression : mastery(live, now)) + " %";   // v2.0 : la même maîtrise réelle partout
   let h = "–"; try { if (q.length) { const it = plan()[0].items.find(x => x.type === "rev"); h = it ? hm(it.f) : "Libre"; } } catch (e) {}
   $("st-heure").textContent = h;
 }
@@ -1812,7 +1816,7 @@ function renderList() {
         const r = el("div", "nrow"), l = document.createElement("div"), t = el("p", "t"); t.append(holeHTML(n, true));
         const w = el("p", "when src"); w.append(srcHTML(n), document.createTextNode(" · " + (n.last ? "revient " + when(n.due) : "nouvelle")));
         const c = catOf(n); if (c === "retr") w.append(" ", el("span", "chip rate", "À retravailler")); else if (c === "ok") w.append(" ", el("span", "chip ok", "✓ Réussie"));
-        l.append(t, w, troisMesures(n)); const b = el("button", "", "Modifier"); b.addEventListener("click", () => openEditor(n));
+        l.append(t, w, cinqMesures(n)); const b = el("button", "", "Modifier"); b.addEventListener("click", () => openEditor(n));
         const tg = el("label", "toggle"), cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !n.off; cb.addEventListener("change", () => { n.off = !cb.checked; save(); renderList(); renderToday(); }); tg.append(cb, "À travailler");
         if (n.off) r.classList.add("off"); const a = el("div", "row"); a.append(tg, b); r.append(l, a); d.append(r); });
       box.append(d); });
@@ -2053,6 +2057,7 @@ function cqAnswer(i) {
   x.qz = x.qz || {n: 0, ok: 0, last: 0}; x.qz.n++; if (good) x.qz.ok++; x.qz.last = now; if (x.mq) moteurNote(x.mq, good ? 1 : 0, !good && (c.why || c.node) ? "confusion" : null);
   if (x.text && x.holes && (!x.last || x.due <= now)) { if (!x.last) db.newToday++; schedule(x, good ? 2 : 1, now); }
   if (x.text && COMP_T.has(q.t === "moteur" ? "moteur" : q.t)) { x.cp = x.cp || {n: 0, ok: 0}; x.cp.n++; if (good) x.cp.ok++; x.cp.last = now; }   // la compréhension se mesure à part
+  if (x.text) suivre(x, q.t, good ? 1 : 0, {choix: good ? null : c.a, now});
   save(); if (onceToday("cq" + (x.id || q.text))) gainN(1, "quiz");
   cqBack(q, c, good); $("qc-turn").hidden = false;
   setTimeout(() => { flipTo("qc-flip", true); $("qc-next").focus(); }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 350);
@@ -2073,6 +2078,7 @@ function cqBack(q, c, good) {
     if (!good && c.neg) p("Attention au sens : la phrase que tu as choisie dit le contraire du cours.");
     else if (!good && c.real) p("Dans ta réponse, les idées sont mélangées. En réalité, " + c.real + ".");
     else if (!good && c.from && c.from.text) { const fo = factOf(c.from); p(fo ? `Ce que tu as choisi, c'est autre chose : « ${fo.term} », c'est ${fo.def}.` : `Ce que tu as choisi vient d'une autre phrase du cours : « ${c.from.text} »`); }
+    originePourquoi(x, good, p);
     const src = el("div", "muted"); src.append("Dans ton cours : "); if (x.holes && x.holes.length) src.append(holeHTML(x, true)); else src.append(x.text); w.append(src);
     if (x.ex && q.t !== "ex") p("Exemple : " + x.ex);
   } else if (x.q !== undefined) { if (x.why) p(x.why); else p("Relis l'énoncé, puis compare ta réponse avec la bonne."); if (!good && c.user) p("C'est un piège que tu avais prévu toi-même : bien vu de l'avoir écrit, reste attentif."); }
@@ -2261,7 +2267,7 @@ function crShow() {
 }
 function crTurn() { cr.turned = true; flipTo("cr-flip", true); document.querySelector("#cr-b .g2").focus(); }
 function crGrade(g) {
-  if (!cr || !cr.turned) return; const c = cr.list[cr.i]; schedule(c, g, Date.now()); cr.n[g]++;
+  if (!cr || !cr.turned) return; const c = cr.list[cr.i]; schedule(c, g, Date.now()); cr.n[g]++; if (c.nid) suivre(db.notions.find(z => z.id === c.nid), "carte", g === 1 ? 0 : g === 2 ? 0.6 : 1);
   if (g === 1 && cr.list.filter(x => x === c).length < 3 && !cr.list.slice(cr.i + 1).includes(c)) remettre(cr.list, cr.i, c);
   save(); if (onceToday("ca" + c.id)) gain(2, "carte"); cr.i++;
   if (cr.i >= cr.list.length) crEnd(); else crShow();
@@ -3148,8 +3154,8 @@ function inverseOk(c) {
 function monte(x, t) {
   const facile = t === "def" || t === "affirm" || t === "carte", z = x.qz || {};
   const maitrise = (z.ok || 0) >= 2 || (x.reps || 0) >= 3, neuf = !(z.n) && !x.last;
-  const cl = compOf(x).k;
-  return (facile ? (maitrise ? 2.5 : neuf ? -1.5 : 0) : (maitrise ? -0.5 : neuf ? 3 : 0)) + (COMP_T.has(t) && (cl === "revoir" || cl === "cours") ? -2 : 0);
+  const cl = compOf(x).k, bf = NP && x.text ? NP.besoin(x).formats : [];
+  return (facile ? (maitrise ? 2.5 : neuf ? -1.5 : 0) : (maitrise ? -0.5 : neuf ? 3 : 0)) + (COMP_T.has(t) && (cl === "revoir" || cl === "cours") ? -2 : 0) + (bf.indexOf(t) >= 0 ? -1 : 0);
 }
 
 
@@ -3259,7 +3265,7 @@ var PERT_L = {3: ["★★★", "Essentielle"], 2: ["★★", "Utile"], 1: ["★"
 
 /* La compréhension : les questions qui demandent de comprendre (exemple, vrai ou faux, exercice, question de l'IA ou du moteur). */
 var COMP_T = new Set(["ex", "affirm", "exo", "moteur", "ia"]);
-function compOf(n) {
+function compOfV15(n) {
   const c = n && n.cp; if (!c || !c.n) return {k: "test", l: "Pas encore testée"};
   const r = c.ok / c.n; if (c.n >= 2 && r >= 0.75) return {k: "ok", l: "Comprise"};
   return r >= 0.4 ? {k: "cours", l: "En cours"} : {k: "revoir", l: "À revoir"};
@@ -3315,6 +3321,117 @@ function renderExamToday() {
 }
 /* Dans Mon carnet, le plan de l'examen le plus proche est déjà ouvert : rien à refaire. */
 { const r0 = renderExams; renderExams = function () { if (!examOuvert && !renderExams.vu) { const l = examsAVenir(); if (l.length) examOuvert = l[0][0]; renderExams.vu = true; } return r0(); }; }
+
+
+/* =====================================================================
+   Version 2.0 : Notéa pilote tout l'apprentissage (js/parcours.js + ce bloc).
+   - L'import construit seul les notions du cours (définitions, phrases clés), avec leur source, leur pertinence,
+     leur difficulté et leurs prérequis. Plus besoin de surligner (on peut encore ajuster).
+   - Chaque réponse met à jour 5 dimensions séparées : pertinence, compréhension, mémorisation, application, autonomie.
+   - Les prérequis passent avant : une notion nouvelle attend ce qu'il faut savoir avant, et une erreur fait revenir
+     le prérequis mal maîtrisé.
+   - L'accueil dit tout de suite : à apprendre, à réviser, ce qui pose problème, la progression réelle, les échéances.
+   ===================================================================== */
+var NP = window.NoteaParcours;
+/* Enregistrer une réponse dans le suivi de la notion (et pas seulement dans FSRS). */
+function suivre(n, type, r, o) { if (!NP || !n || !n.text) return; NP.enregistrer(n, type, r, o || {}); }
+function notionsParId() { return new Map(db.notions.map(n => [n.id, n])); }
+
+/* ---------- L'import construit le parcours tout seul ---------- */
+function holesAt(text, term) {
+  const t = tokens(text), low = text.toLowerCase(), i = low.indexOf(String(term).toLowerCase()); if (i < 0) return [];
+  const out = []; let c = 0, fin = i + term.length;
+  t.forEach((w, k) => { const a = c, b = c + w.length; c = b; if (/^\s*$/.test(w)) return; if (b > i && a < fin) out.push(k); });
+  return out.slice(0, 4);
+}
+function creerDepuisAnalyse(mat, analyseMoteur, coursId) {
+  if (!NP || !analyseMoteur) return null;
+  const brutes = NP.notionsDepuisAnalyse(analyseMoteur); if (!brutes.length) return null;
+  const have = new Map(db.notions.map(n => [n.text, n])), src = mat + " · " + new Date().toLocaleDateString("fr-FR"), t0 = Date.now(), parCle = new Map(), nouvelles = [];
+  brutes.slice().sort((x, y) => (x.def ? 0 : 1) - (y.def ? 0 : 1)).forEach(b => {   // une vraie définition passe avant une simple phrase
+    const text = b.def || b.phrase; if (!text) return; if (have.has(text)) { parCle.set(b.cle, have.get(text)); return; }   // doublon : ses liens vont à la notion gardée
+    const n = makeNotion(text, "imp", src); const h = holesAt(text, b.term); if (h.length) n.holes = h;
+    Object.assign(n, {mat, chap: b.chap || "", pert: b.pert, D: b.D, rang: b.rang, created: t0 + b.rang, cid: coursId || "", srcRef: b.source, auto: true});
+    n.kind = b.def ? (b.kind && b.kind !== "info" ? b.kind : "def") : "info";
+    if (b.ex) n.ex = b.ex; if (!b.sur) n.doute = true;
+    n._cle = b.cle; n._pre = b.pre; parCle.set(b.cle, n); nouvelles.push(n); have.set(text, n);
+  });
+  brutes.forEach(b => { const n = parCle.get(b.cle); if (n && nouvelles.includes(n) && n._cle !== b.cle) n._pre = (n._pre || []).concat(b.pre); });
+  nouvelles.forEach(n => { n.pre = [...new Set((n._pre || []).map(k => parCle.get(k)).filter(p => p && p !== n).map(p => p.id))]; delete n._pre; delete n._cle; if (!n.pre.length) delete n.pre; });
+  db.notions.push(...nouvelles); fixExamples(db.notions);
+  return {n: nouvelles.length, ess: nouvelles.filter(n => n.pert === 3).length, pre: nouvelles.filter(n => n.pre).length,
+    parties: new Set(nouvelles.map(n => n.chap).filter(Boolean)).size, doutes: nouvelles.filter(n => n.doute).length};
+}
+function importAuto() {
+  const mat = $("imp-mat").value.trim() || (mot && mot.classification && mot.classification.matiere && mot.classification.matiere.valeur) || "Cours importé";
+  const text = sansReperes($("imp-text").value.trim());
+  saveCours(mat, text); const c = db.cours.find(x => x.text === text), r = creerDepuisAnalyse(mat, mot, c && c.id);
+  if (!r || r.n < 2) return false;            // l'analyse n'a presque rien trouvé : on laisse l'élève choisir les phrases
+  save(); useTool("notions"); renderList(); renderToday();
+  const box = $("imp-ok"); box.replaceChildren();
+  box.append(el("h2", "", "✓ Notéa a compris ton cours"),
+    el("p", "", `${r.n} notions trouvées dans ${mat}` + (r.parties ? `, en ${r.parties} partie${r.parties > 1 ? "s" : ""}` : "") + `. ${r.ess} sont essentielles` + (r.pre ? `, ${r.pre} ont besoin d'une autre notion avant (Notéa respecte cet ordre)` : "") + "."),
+    el("p", "muted", "Tout vient de ton cours, mot pour mot. Notéa n'a rien inventé." + (r.doutes ? ` ${r.doutes} passage${r.doutes > 1 ? "s" : ""} mal lu${r.doutes > 1 ? "s" : ""} (photo floue ?) : vérifie-les dans Mon carnet.` : "")));
+  const a = el("div", "row"), b1 = el("button", "primary", "▶ Commencer mon parcours"), b2 = el("button", "", "Voir mes notions"), b3 = el("button", "", "Choisir moi-même les phrases");
+  b1.addEventListener("click", () => { box.hidden = true; tab("jour"); startSession({mat}); });
+  b2.addEventListener("click", () => { box.hidden = true; nMat = mat; nFilter = "tout"; tab("notes"); });
+  b3.addEventListener("click", () => { box.hidden = true; autoPick(); $("pick-card").hidden = false; $("pick-card").scrollIntoView({block: "start", behavior: "smooth"}); });
+  a.append(b1, b2, b3);
+  if (typeof iaVoie === "function" && iaVoie()) { const b4 = el("button", "", "✨ Approfondir avec l'IA"); b4.addEventListener("click", () => { box.hidden = true; tab("comprendre"); }); a.append(b4); }
+  box.append(a); box.hidden = false; $("imp-text").value = ""; impPhoto = false; impOpen = false;
+  box.scrollIntoView({block: "start", behavior: "smooth"});
+  return true;
+}
+
+/* ---------- Le suivi en 5 dimensions, dans Mon carnet ---------- */
+function compOf(n) { const v = NP ? NP.profil(n).comp : null; return v ? {k: v.k, l: v.l} : {k: "test", l: "Pas encore testée"}; }
+function cinqMesures(n) {
+  const box = el("div", "mesures"), p = pertOf(n);
+  const a = el("span", "mes p" + p, PERT_L[p][0] + " " + PERT_L[p][1]); a.title = "Pertinence : l'importance de la notion pour l'examen";
+  box.append(el("span", "muted mes-l", "Pertinence"), a);
+  if (NP) { const pr = NP.profil(n), ic = {comp: "🧠", mem: "🔁", app: "🛠", auto: "🚀"};
+    NP.DIMS.forEach(d => { const s = el("span", "mes " + pr[d].k, ic[d] + " " + pr[d].l); s.title = NP.NOM[d] + " : " + NP.AIDE[d]; box.append(el("span", "muted mes-l", NP.NOM[d]), s); });
+    const b = NP.besoin(n); if (n.last || n.dims) box.append(el("span", "mes-next", "→ " + b.l));
+    if (NP.fragile(n)) box.append(el("span", "mes revoir", "⚠ Semble acquise, mais fragile"));
+  }
+  if (n.srcRef && n.srcRef.page) box.append(el("span", "muted mes-l", "📖 page " + n.srcRef.page));
+  if (n.doute) box.append(el("span", "mes revoir", "Passage mal lu : vérifie"));
+  return box;
+}
+
+/* ---------- L'accueil : tout de suite, ce qui compte ---------- */
+function renderTableau() {
+  const box = $("tableau"); if (!box || !NP || !ACT) return; box.replaceChildren();
+  if (!db.notions.length) { box.hidden = true; return; } box.hidden = false;
+  const q = todayQueue(), t = NP.tableau(db.notions, q, Date.now(), pertOf), ex = examsAVenir()[0];
+  const tile = (v, l, cls) => { const d = el("div", "tb-t " + (cls || "")); d.append(el("b", "", v), el("span", "", l)); return d; };
+  const g = el("div", "tb-g");
+  g.append(tile(String(t.apprendre), t.apprendre > 1 ? "notions à apprendre" : "notion à apprendre"), tile(String(t.reviser), "à réviser"),
+    tile(t.progression + " %", `maîtrise réelle · ${t.acquises}/${t.total} acquises`, "ok"),
+    tile(ex ? dansJ(joursAvant(ex[1], Date.now())) : "—", ex ? "examen : " + ex[0] : "pas d'examen prévu", ex ? "imp" : ""));
+  box.append(el("h2", "", "Aujourd'hui"), g);
+  const pb = t.problemes.slice(0, 3);
+  if (pb.length) {
+    box.append(el("h3", "tb-h", "Ce qui te pose problème"));
+    pb.forEach(x => { const r = el("div", "tb-pb"), l = el("div", "");
+      l.append(el("b", "", (factOf(x.n) || {}).term || x.n.term || answerOf(x.n) || x.n.text.slice(0, 40)), el("span", "muted", " · " + x.raison));
+      const b = el("button", "", "Travailler"); b.addEventListener("click", () => travaillerNotion(x.n, x.bloquants)); r.append(l, b); box.append(r); });
+  }
+}
+/* Travailler une notion difficile : d'abord ses prérequis, puis elle, avec les questions qui correspondent à ce qui manque. */
+function travaillerNotion(n, avant) {
+  const items = (avant || []).concat([n]).filter(Boolean); tab("jeux");
+  $("jx-mat").value = matOf(n); fillChapSel($("jx-chap"), matOf(n));
+  cqStart(items.concat(db.notions.filter(x => matOf(x) === matOf(n) && !items.includes(x) && !x.off).slice(0, Math.max(0, 6 - items.length))));
+}
+
+/* ---------- Au dos de la carte du quiz : l'origine de l'erreur ---------- */
+function originePourquoi(x, good, p) {
+  if (!NP || !x || !x.text) return;
+  if (!good) { const bl = NP.prerequisBloquants(x, notionsParId()); if (bl.length) p("💡 Ton erreur vient peut-être d'ici : « " + ((factOf(bl[0]) || {}).term || answerOf(bl[0])) + " » n'est pas encore acquis. Il faut le savoir avant. Il va revenir dans ta révision.");
+    const c = NP.confusionFrequente(x); if (c) p("🔁 Tu confonds souvent avec « " + c + " ». Compare bien les deux."); }
+  if (x.srcRef && x.srcRef.page) p("📖 C'est dans ton cours, page " + x.srcRef.page + ".");
+}
 
 /* ---------- Le bouton « retour » du navigateur marche, et la page ouverte est gardée ---------- */
 window.addEventListener("popstate", () => tab(TABS[location.hash.slice(1)] ? location.hash.slice(1) : "jour", true));

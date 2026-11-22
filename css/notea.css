@@ -633,3 +633,13 @@ body.zen .page-masc{display:none!important}
 
 /* Appli installée (plein écran) : laisser la place à l'encoche et à la barre du haut */
 @media (display-mode: standalone){.main{padding-top:max(var(--space-4),env(safe-area-inset-top))}}
+
+/* ---------- Version 2.0 : le tableau du jour, le suivi en 5 dimensions ---------- */
+.tb-g{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--space-3);margin-top:var(--space-2)}
+.tb-t{display:flex;flex-direction:column;gap:2px;padding:var(--space-3);border-radius:var(--radius-md);background:var(--surface-2)}
+.tb-t b{font-size:26px;line-height:1.1} .tb-t span{font-size:14px;color:var(--text-2)}
+.tb-t.ok{background:var(--success-soft)} .tb-t.ok b{color:var(--success)} .tb-t.imp{background:var(--accent-soft)}
+.tb-h{margin:var(--space-4) 0 var(--space-2);font-size:16px}
+.tb-pb{display:flex;justify-content:space-between;align-items:center;gap:var(--space-3);padding:var(--space-2) 0;border-top:1px solid var(--line)}
+.mes-next{font-size:13px;font-weight:800;color:var(--accent-text);margin-left:6px}
+@media (max-width:700px){.tb-g{grid-template-columns:1fr 1fr}}
