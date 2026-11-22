@@ -1615,7 +1615,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "1.15";
+const VERSION = "1.16";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -1751,6 +1751,9 @@ function pageHead(name) {
   if (name === "jour") $("page-t").textContent = "Bonjour" + (db.nom ? " " + db.nom : "") + " 👋";
   else { const to = name === first ? "jour" : first; b.dataset.tab = to; $("back-t").textContent = TABS[to][0]; }
   $("page-s").textContent = SUBS[name] || ""; $("page-s").hidden = !SUBS[name];
+  // Le singe de la maquette, une pose différente par partie (l'accueil a déjà le sien dans le grand bandeau).
+  const pose = {blanche: "notes", progres: "reussite", planning: "organisation"}[name] || {cours: "lecture", carnet: "progression", prof: "idee", agenda: "heureux", reglages: "accessibilite"}[g];
+  const m = $("page-masc"); m.hidden = !pose; if (pose) m.src = "img/mascotte/" + pose + ".webp";
 }
 
 /* ---------- Accueil : 3 chiffres et la prochaine session ---------- */
@@ -3207,7 +3210,7 @@ document.addEventListener("fullscreenchange", () => { if (!document.fullscreenEl
 
 /* ---------- Le menu de gauche sort quand la souris va à gauche, et se cache quand elle part ---------- */
 {
-  const side = document.querySelector(".side"), mq = matchMedia("(min-width:901px) and (hover:hover)");
+  const side = document.querySelector(".side"), mq = matchMedia("(min-width:901px) and (max-width:1199px) and (hover:hover)");   // grand écran : le menu reste visible (maquette)
   let t = null; const montre = () => { clearTimeout(t); document.body.classList.add("side-on"); };
   const cache = () => { clearTimeout(t); t = setTimeout(() => { if (!side.matches(":hover") && !side.contains(document.activeElement)) document.body.classList.remove("side-on"); }, 250); };
   const applique = () => document.body.classList.toggle("side-auto", mq.matches);

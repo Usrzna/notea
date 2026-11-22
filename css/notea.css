@@ -594,3 +594,39 @@ body.side-auto.side-on::before,body.zen::before{display:none}
 .pc-step{flex:0 0 auto;min-width:104px;display:flex;flex-direction:column;gap:2px;padding:var(--space-2) var(--space-3);border-radius:var(--radius-md);border:1px solid var(--line);background:var(--surface-2);font-size:14px}
 .pc-step.now{border:2px solid var(--accent);background:var(--accent-soft)}
 .pc-step.jj{border-color:var(--hl)} .pc-step.more{justify-content:center;min-width:40px}
+
+/* =====================================================================
+   v1.16 · Design de la maquette de Simon
+   Menu de gauche toujours visible sur grand écran, titre à gauche et singe à droite,
+   titres en Nunito arrondi et gras, slogan souligné en jaune.
+   ===================================================================== */
+:root{--font-title:"Nunito",var(--font)}
+h1,h2,.big,.brand b,.slogan p,.folder b,.verdict{font-family:var(--font-title);font-weight:800;letter-spacing:-.015em}
+h1{font-size:clamp(30px,3.4vw,42px);line-height:1.1;color:var(--accent-text)}
+h2{font-size:22px}
+/* En-tête : titre à gauche ; à droite, les petits boutons puis le singe */
+.top{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"brand brand" "titre outils" "titre singe";align-items:start;column-gap:var(--space-6);row-gap:var(--space-2)}
+.top>.brand{grid-area:brand}
+.top>div:nth-child(2){grid-area:titre;align-self:center;display:flex;flex-direction:column;gap:4px;min-width:0}
+.top>.row{grid-area:outils;justify-self:end;gap:var(--space-2)}
+.top>.row>button,.top .xp{min-height:40px;padding:6px 14px;font-size:15px}
+.page-masc{grid-area:singe;justify-self:end;width:132px;height:auto;margin:-4px 4px -14px 0;filter:drop-shadow(0 10px 14px rgba(59,37,87,.18))}
+.page-masc[hidden]{display:none}
+#page-s{font-size:17px;max-width:46ch}
+/* Grand écran : menu de gauche fixe comme sur la maquette */
+@media (min-width:1200px){.top>.brand{display:none!important}}
+/* Slogan de l'accueil : grand, gras, penché, souligné en jaune */
+.slogan p{font-weight:900;font-style:italic;letter-spacing:-.02em;position:relative;display:inline-block;padding-bottom:10px}
+.slogan p::after{content:"";position:absolute;left:4%;right:18%;bottom:0;height:9px;border-radius:9px;background:#FFC93C;transform:rotate(-2deg);opacity:.9}
+/* Dossiers de cours : titres arrondis */
+.folder b{font-size:22px}
+@media (max-width:900px){
+  .top{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"brand brand" "outils outils" "titre singe"}
+  .top>.brand{width:auto}
+  .top>.row{justify-self:stretch;flex-wrap:wrap;order:0}
+  .top>div:nth-child(2){width:auto;order:0}
+  .page-masc{width:92px;margin:0}
+}
+@media (max-width:520px){.page-masc{width:76px}.top>.row>button:not(#zen),.top .xp{padding:6px 10px}}
+body.zen .page-masc{display:none!important}
+.top .back{align-self:flex-start}

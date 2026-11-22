@@ -12,8 +12,8 @@
 <script>try{var t=localStorage.getItem("notea-theme");if(t&&t!=="auto")document.documentElement.dataset.theme=t;var f=localStorage.getItem("notea-police");if(f)document.documentElement.dataset.font=f}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600..800&family=Nunito:wght@400..900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/notea.css?v=1.15">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400..900;1,700..900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/notea.css?v=1.16">
 </head>
 <body>
 
@@ -71,6 +71,7 @@
       <button data-tab="acces" class="only-m" aria-label="Accessibilité et paramètres"><svg class="ic" aria-hidden="true"><use href="#i-reglages"/></svg></button>
       <button id="zen" aria-pressed="false" title="Plein écran, sans distraction">🎧 Concentration</button>
       <button id="theme-quick"><svg class="ic" aria-hidden="true"><use href="#i-theme"/></svg><span id="theme-quick-t">Mode sombre</span></button></div>
+    <img id="page-masc" class="page-masc" src="" alt="" width="150" height="134" hidden>
   </header>
   <div class="subnav" id="subnav" role="navigation" aria-label="Dans cette partie"></div>
   <div id="note" class="msg" role="status" hidden></div>
@@ -702,18 +703,18 @@
 <datalist id="chap-list"></datalist>
 <div id="sheet"></div>
 <div class="ruler" id="ruler-t" hidden></div><div class="ruler" id="ruler-b" hidden></div>
-<script src="js/moteur/00-outils.js?v=1.15"></script>
-<script src="js/moteur/01-ingestion.js?v=1.15"></script>
-<script src="js/moteur/02-classification.js?v=1.15"></script>
-<script src="js/moteur/03-semantique.js?v=1.15"></script>
-<script src="js/moteur/04-pertinence.js?v=1.15"></script>
-<script src="js/moteur/05-graphe.js?v=1.15"></script>
-<script src="js/moteur/06-pedagogie.js?v=1.15"></script>
-<script src="js/moteur/07-eleve.js?v=1.15"></script>
-<script src="js/moteur/08-generation.js?v=1.15"></script>
-<script src="js/moteur/09-schemas.js?v=1.15"></script>
-<script src="js/moteur/10-adaptation.js?v=1.15"></script>
-<script src="js/moteur/11-pipeline.js?v=1.15"></script>
-<script src="js/app.js?v=1.15"></script>
+<script src="js/moteur/00-outils.js?v=1.16"></script>
+<script src="js/moteur/01-ingestion.js?v=1.16"></script>
+<script src="js/moteur/02-classification.js?v=1.16"></script>
+<script src="js/moteur/03-semantique.js?v=1.16"></script>
+<script src="js/moteur/04-pertinence.js?v=1.16"></script>
+<script src="js/moteur/05-graphe.js?v=1.16"></script>
+<script src="js/moteur/06-pedagogie.js?v=1.16"></script>
+<script src="js/moteur/07-eleve.js?v=1.16"></script>
+<script src="js/moteur/08-generation.js?v=1.16"></script>
+<script src="js/moteur/09-schemas.js?v=1.16"></script>
+<script src="js/moteur/10-adaptation.js?v=1.16"></script>
+<script src="js/moteur/11-pipeline.js?v=1.16"></script>
+<script src="js/app.js?v=1.16"></script>
 </body>
 </html>
