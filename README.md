@@ -58,7 +58,7 @@ Le verre est réservé à la navigation et aux barres d'outils. Le contenu repos
 
 ## Compte Notéa et serveur (version 1.8)
 
-L'IA marche sans clé : l'élève se connecte (lien magique par e-mail) et dépense des **crédits**. La consommation est payée par le compte Anthropic de Notéa.
+L'IA marche sans clé : l'élève se connecte (lien magique par e-mail) et dépense des **crédits**. Depuis la v2.1, l'IA du serveur est **Gemini (Google), offre gratuite** : Gemini Flash, avec Flash-Lite en secours si Google est saturé.
 
 - **Serveur** : Supabase, projet `notea` (Europe, Paris). Code dans `supabase/`.
 - **Base** (`supabase/migrations/`) : `paliers` (offres), `profils` (crédits, palier, date de recharge, accord RGPD), `appels` (journal sans le texte des cours). RLS : chaque élève ne lit que sa ligne et n'écrit rien directement.
@@ -68,8 +68,8 @@ L'IA marche sans clé : l'élève se connecte (lien magique par e-mail) et dépe
   - `supprimer-compte` : « Supprimer mon compte » (RGPD).
   - `stripe-webhook` : emplacement pour Stripe, pas déployé.
   - Si l'appel à Claude échoue, les crédits sont rendus.
-- **La clé Anthropic** est le secret `ANTHROPIC_API_KEY` du projet Supabase. Elle n'est jamais dans ce dépôt. La clé `anon` dans `js/app.js` est publique par conception.
-- **Offres** (table `paliers`, modifiable sans toucher au code) : Gratuit 25 crédits par mois (Haiku 5.5) ; Essentiel 40, Plus 100, Max 250 crédits par semaine (Sonnet 5.5, Sonnet 5.5, Opus 5.5). Prix à fixer, Stripe pas encore activé.
+- **La clé Gemini** est le secret `GEMINI_API_KEY` du projet Supabase (créée sur aistudio.google.com). Elle n'est jamais dans ce dépôt. La clé `anon` dans `js/app.js` est publique par conception.
+- **Offres** (table `paliers`, modifiable sans toucher au code) : Gratuit 25 crédits par mois ; Essentiel 40, Plus 100, Max 250 crédits par semaine. Tous avec Gemini Flash pour l'instant (colonne `modele`). Prix à fixer, Stripe pas encore activé.
 - **Consignes** : après un changement de `IA_SYSTEME`, `IA_SCHEMA`, `DC_BASE` ou `DC_MODES` dans `js/app.js`, lancer `node scripts/consignes.js` puis redéployer les fonctions.
 - **Mode « ma propre clé »** : toujours là, en option dans Paramètres.
 - **RGPD** : accord clair avant le premier envoi, écran « Mes données » (ce qui est gardé, journal, téléchargement, retirer l'accord, supprimer le compte).

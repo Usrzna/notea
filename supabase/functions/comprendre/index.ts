@@ -1,6 +1,6 @@
-// Notéa : l'IA comprend un cours (même consigne et même schéma que iaAnalyser dans js/app.js).
-// Le cours n'est pas gardé : il est envoyé à Claude puis oublié.
-import { appelClaude, ErreurEleve, servir } from "../_shared/commun.ts";
+// Notéa : l'IA comprend un cours (même consigne et même schéma que iaAnalyser dans js/app.js ; l'IA est Gemini).
+// Le cours n'est pas gardé : il est envoyé à l'IA puis oublié.
+import { appelIA, ErreurEleve, servir } from "../_shared/commun.ts";
 import { IA_SCHEMA, IA_SYSTEME } from "../_shared/consignes.ts";
 
 export const COUT = 5;              // crédits par analyse
@@ -16,9 +16,9 @@ Deno.serve(servir({
     if (texte.length > TEXTE_MAX) return { erreur: `Ce cours est trop long (plus de ${TEXTE_MAX / 1000} 000 caractères). Coupe-le en plusieurs cours.` };
     return {
       cout: COUT,
-      faire: async (client, model) => {
-        const r = await appelClaude(client, {
-          model, system: IA_SYSTEME, maxTokens: 32000, effort: "medium", format: { type: "json_schema", schema: IA_SCHEMA },
+      faire: async (cle, model) => {
+        const r = await appelIA(cle, {
+          model, system: IA_SYSTEME, maxTokens: 32000, schema: IA_SCHEMA,
           messages: [{ role: "user", content: `Matière : ${mat || "Cours"}\n\nVoici mes notes de cours :\n<cours>\n${texte}\n</cours>` }],
         });
         try { JSON.parse(r.text); } catch { throw new ErreurEleve("La réponse de l'IA est incomplète. Réessaie. Tes crédits sont rendus."); }

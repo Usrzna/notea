@@ -1617,7 +1617,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "2.0";
+const VERSION = "2.1";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -2704,7 +2704,7 @@ function renderComprendre() {
   const p = compte && compte.profil, bloque = voie === "compte" && p && !p.consentement_le;
   $("cp-go").textContent = a ? "Refaire l'analyse" : "✨ Comprendre ce cours avec l'IA";
   $("cp-go").disabled = !voie || bloque;
-  const deja = a ? `Analysé le ${new Date(a.date).toLocaleDateString("fr-FR")} avec ${(IA_MODELES[a.model] || [a.model])[0]} (${a.cout ? a.cout + " crédits" : fmtPrix(a.prix || 0)}). ` : "";
+  const deja = a ? `Analysé le ${new Date(a.date).toLocaleDateString("fr-FR")} avec ${(IA_MODELES[a.model] || [/^gemini/i.test(a.model || "") ? "Gemini" : a.model])[0]} (${a.cout ? a.cout + " crédits" : fmtPrix(a.prix || 0)}). ` : "";
   $("cp-info").textContent = !voie ? "Pour utiliser l'IA, connecte-toi dans Paramètres → Mon compte Notéa. C'est gratuit." :
     bloque ? "Avant la première analyse, donne ton accord dans Paramètres → Mon compte Notéa." :
     voie === "compte" ? deja + `Une analyse coûte ${COUT_ANALYSE} crédits${p ? `. Il t'en reste ${p.credits}` : ""}. Elle est faite une seule fois, puis gardée sur ton appareil.` :
@@ -2781,7 +2781,7 @@ Object.assign(SUBS, {comprendre: "Le plan de ton cours et ses notions, expliqué
    - Les crédits sont comptés sur le serveur (table profils) ; chaque élève ne lit que sa ligne.
    - Les cours passent par le serveur le temps de la réponse, ils ne sont pas gardés.
    - La clé publique ci-dessous est faite pour être dans l'appli : la sécurité vient de la RLS.
-     La clé Anthropic, elle, n'est jamais ici : c'est un secret du serveur.
+     La clé de l'IA du serveur (Gemini, GEMINI_API_KEY), elle, n'est jamais ici : c'est un secret du serveur.
    ===================================================================== */
 var SB_URL = "https://eqqglkglcegtxqaawfee.supabase.co";
 var SB_CLE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxcWdsa2dsY2VndHhxYWF3ZmVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5Mjc3ODcsImV4cCI6MjExMDUwMzc4N30.wryWxS-e2kDGwAXYaUouVo-YHw_YADkXnwk4fKZUbCg";

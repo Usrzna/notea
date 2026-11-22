@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400..900;1,700..900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/notea.css?v=2.0">
+<link rel="stylesheet" href="css/notea.css?v=2.1">
 </head>
 <body>
 
@@ -649,9 +649,9 @@
         <div id="cpt-accord" class="msg warn" hidden>
           <p><b>Avant d'utiliser l'IA, lis ceci.</b></p>
           <ul>
-            <li>Quand tu demandes à l'IA, le texte de ton cours part sur internet : vers le serveur de Notéa (en Europe), puis vers Anthropic, l'entreprise qui fait l'IA Claude (aux États-Unis).</li>
+            <li>Quand tu demandes à l'IA, le texte de ton cours part sur internet : vers le serveur de Notéa (en Europe), puis vers Google, l'entreprise qui fait l'IA Gemini (ses serveurs peuvent être hors d'Europe).</li>
             <li>Notéa ne garde pas tes cours. Notéa garde seulement ton e-mail, tes crédits et la date de chaque demande.</li>
-            <li>Anthropic n'utilise pas tes cours pour entraîner son IA. Il peut les garder 30 jours au plus, pour la sécurité.</li>
+            <li>Pour les élèves en Europe, Google n'utilise pas tes cours pour entraîner son IA. Il peut les garder un temps limité, pour la sécurité.</li>
             <li>Tu peux retirer ton accord ou supprimer ton compte quand tu veux, dans « Mes données ».</li>
           </ul>
           <div class="row"><button id="cpt-ok" class="primary">J'ai compris, j'accepte</button></div>
@@ -696,7 +696,7 @@
       <div id="md-on" hidden>
         <p>Notéa garde seulement :</p>
         <ul id="md-liste"></ul>
-        <p class="muted">Tes cours ne sont pas gardés. Ils passent par le serveur de Notéa (en Europe) et par Anthropic (aux États-Unis) le temps de la réponse. Anthropic peut les garder 30 jours au plus, pour la sécurité, et ne s'en sert pas pour entraîner son IA.</p>
+        <p class="muted">Tes cours ne sont pas gardés. Ils passent par le serveur de Notéa (en Europe) et par Google (l'IA Gemini) le temps de la réponse. Pour les élèves en Europe, Google ne s'en sert pas pour entraîner son IA ; il peut les garder un temps limité, pour la sécurité.</p>
         <h3>Mes dernières demandes à l'IA</h3>
         <div id="md-appels"></div>
         <div class="row"><button id="md-export">Télécharger mes données en ligne</button><button id="md-retirer">Retirer mon accord</button><button id="md-suppr" class="danger">Supprimer mon compte</button></div>
@@ -717,19 +717,19 @@
 <datalist id="chap-list"></datalist>
 <div id="sheet"></div>
 <div class="ruler" id="ruler-t" hidden></div><div class="ruler" id="ruler-b" hidden></div>
-<script src="js/moteur/00-outils.js?v=2.0"></script>
-<script src="js/moteur/01-ingestion.js?v=2.0"></script>
-<script src="js/moteur/02-classification.js?v=2.0"></script>
-<script src="js/moteur/03-semantique.js?v=2.0"></script>
-<script src="js/moteur/04-pertinence.js?v=2.0"></script>
-<script src="js/moteur/05-graphe.js?v=2.0"></script>
-<script src="js/moteur/06-pedagogie.js?v=2.0"></script>
-<script src="js/moteur/07-eleve.js?v=2.0"></script>
-<script src="js/moteur/08-generation.js?v=2.0"></script>
-<script src="js/moteur/09-schemas.js?v=2.0"></script>
-<script src="js/moteur/10-adaptation.js?v=2.0"></script>
-<script src="js/moteur/11-pipeline.js?v=2.0"></script>
-<script src="js/parcours.js?v=2.0"></script>
-<script src="js/app.js?v=2.0"></script>
+<script src="js/moteur/00-outils.js?v=2.1"></script>
+<script src="js/moteur/01-ingestion.js?v=2.1"></script>
+<script src="js/moteur/02-classification.js?v=2.1"></script>
+<script src="js/moteur/03-semantique.js?v=2.1"></script>
+<script src="js/moteur/04-pertinence.js?v=2.1"></script>
+<script src="js/moteur/05-graphe.js?v=2.1"></script>
+<script src="js/moteur/06-pedagogie.js?v=2.1"></script>
+<script src="js/moteur/07-eleve.js?v=2.1"></script>
+<script src="js/moteur/08-generation.js?v=2.1"></script>
+<script src="js/moteur/09-schemas.js?v=2.1"></script>
+<script src="js/moteur/10-adaptation.js?v=2.1"></script>
+<script src="js/moteur/11-pipeline.js?v=2.1"></script>
+<script src="js/parcours.js?v=2.1"></script>
+<script src="js/app.js?v=2.1"></script>
 </body>
 </html>

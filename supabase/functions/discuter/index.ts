@@ -1,6 +1,6 @@
 // Notéa : le prof particulier. La consigne vient du serveur (DC_BASE + DC_MODES), l'appli n'envoie que les notions et la discussion.
-// Rien n'est gardé.
-import { appelClaude, servir } from "../_shared/commun.ts";
+// L'IA est Gemini. Rien n'est gardé.
+import { appelIA, servir } from "../_shared/commun.ts";
 import { DC_BASE, DC_MODES } from "../_shared/consignes.ts";
 
 export const COUT = 1;               // crédit par réponse
@@ -27,9 +27,9 @@ Deno.serve(servir({
     const messages = m.map((t: { role: "user" | "assistant"; content: string }) => ({ role: t.role, content: t.content }));
     return {
       cout: COUT,
-      faire: async (client, model) => {
-        const r = await appelClaude(client, {
-          model, maxTokens: 4000, effort: "low", messages,
+      faire: async (cle, model) => {
+        const r = await appelIA(cle, {
+          model, maxTokens: 4000, messages,
           system: DC_BASE + " " + DC_MODES[mode][1] + "\n\nLes notions du cours :\n" + contexte,
         });
         return { corps: { text: r.text.trim() }, tIn: r.tIn, tOut: r.tOut, modele: r.modele };
