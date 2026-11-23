@@ -124,10 +124,21 @@ test("Questions de mémorisation, compréhension, application et raisonnement pr
   [1, 2, 3].forEach(n => assert.ok(b.has(n), "Bloom " + n));
   assert.ok(analyse("svt-photosynthese.txt").questions.some(q => q.bloom >= 4), "raisonnement");
 });
-test("QCM : 4 choix au plus, la bonne réponse incluse, les pièges sont des phrases du même cours", () => {
-  const a = analyse("droit-propriete.txt");
-  a.questions.filter(q => q.choix).forEach(q => { assert.ok(q.choix.length >= 3 && q.choix.length <= 4); assert.ok(q.choix.includes(q.reponseAttendue));
-    q.choix.forEach(c => assert.ok(cours("droit-propriete.txt").toLowerCase().includes(c.toLowerCase().slice(0, 15)), c)); });
+test("QCM : utiles (pas de réponse trouvable sans comprendre)", () => {
+  const fichiers = ["droit-propriete.txt", "eco-inflation.txt", "svt-photosynthese.txt", "histoire-ww1.txt", "inedits2/philo-liberte.txt", "inedits/francais-figures.txt"];
+  let n = 0;
+  fichiers.forEach(f => analyse(f).questions.filter(q => q.choix).forEach(q => { n++;
+    assert.ok(q.choix.length >= 3 && q.choix.length <= 4, q.enonce); assert.ok(q.choix.includes(q.reponseAttendue));
+    assert.equal(new Set(q.choix.map(c => c.toLowerCase())).size, q.choix.length, "pas deux fois la même option");
+    assert.equal(q.pieges.length, q.choix.length - 1); q.pieges.forEach(p => assert.ok(p.pourquoi && p.pourquoi.length > 10, "chaque piège a son explication"));
+    const L = q.reponseAttendue.length; if (["qcm-juste", "qcm-cause", "qcm-date"].includes(q.type)) q.pieges.forEach(p => assert.ok(p.texte.length >= L * 0.55 && p.texte.length <= L * 1.8, "pas d'indice de longueur : " + p.texte));
+    assert.ok(!/ l['’][bcdfgjkmnpqrstvwxz]|^[a-zé]/.test(q.choix.join(" | ")) || q.type === "qcm-situation", "français correct : " + q.choix.join(" | ")); }));
+  assert.ok(n >= 15, n + " QCM");
+  const d = analyse("droit-propriete.txt").questions.find(q => q.type === "qcm-juste" && q.reponseAttendue.startsWith("Le fructus"));
+  assert.ok(d.pieges.every(p => /^Le fructus est le droit/.test(p.texte)), "même sujet, même forme : seule la compréhension départage");
+  const c = analyse("eco-inflation.txt").questions.find(q => q.type === "qcm-cause" && /inflation entraîne/.test(q.reponseAttendue));
+  assert.ok(c.pieges.some(p => /hausse du pouvoir d'achat/.test(p.texte)), "l'erreur de sens est proposée");
+  assert.ok(!analyse("droit-propriete.txt").questions.some(q => q.type === "qcm-intrus" && q.reponseAttendue === "Usufruit"), "l'usufruit est aussi un droit : jamais présenté comme intrus");
 });
 test("Exercice de calcul : résultat juste", () => {
   const q = analyse("physique-puissance.txt").questions.find(x => x.type === "calcul"), [u, i] = q.enonce.match(/\d+/g).map(Number);

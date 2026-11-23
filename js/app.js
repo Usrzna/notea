@@ -1617,7 +1617,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "2.1";
+const VERSION = "2.2";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -2302,9 +2302,11 @@ Object.assign(SUBS, {jeux: "Choisis ta réponse : la carte se retourne et t'expl
    Examen blanc : les questions ouvertes du moteur. Prof particulier : les liens et l'ordre du cours, et ce que l'élève maîtrise mal.
    Chaque réponse est enregistrée dans le profil de l'élève (niveaux de maîtrise du moteur).
    ===================================================================== */
-var MQ_NOM = ["directe", "situation", "categorie", "lieu", "condition", "calcule-quoi", "causalite"];
+// Le quiz ne garde que les QCM du moteur dont les mauvaises réponses sont de vraies erreurs possibles (08b-qcm.js).
+// Plus de choix tirés au hasard parmi les notions : une question qu'on réussit sans comprendre ne sert à rien.
+var MQ_NOM = [];
 var MQ_REV = ["reformulation", "situation", "causalite", "comparaison", "condition", "dependance", "partie", "categorie", "lieu", "calcule-quoi", "calcul", "synthese"];
-var MQ_TAG = {qcm: "Définition", "qcm-notion": "Définition", directe: "Vocabulaire", situation: "Situation", categorie: "Classer", lieu: "Où ?", condition: "Condition",
+var MQ_TAG = {"qcm-juste": "Laquelle est juste ?", "qcm-cause": "Cause et effet", "qcm-date": "Date", "qcm-situation": "Situation", "qcm-ordre": "Ordre", "qcm-intrus": "L'intrus", qcm: "Définition", "qcm-notion": "Définition", directe: "Vocabulaire", situation: "Situation", categorie: "Classer", lieu: "Où ?", condition: "Condition",
   "calcule-quoi": "Formule", causalite: "Cause et effet", calcul: "Calcul", reformulation: "Avec tes mots", comparaison: "Comparer", dependance: "Dépend de",
   partie: "Les éléments", synthese: "Relier les idées", definition: "Définition", chronologie: "Ordre"};
 function moteurOK() { return typeof NoteaMoteur !== "undefined"; }
@@ -2356,7 +2358,7 @@ function elide(s) { return s.replace(/(^|\s)(de|le|la) (?=[aeiouyhâàéèêîô
 function defPhrase(n) { const d = String(n.definition).trim().replace(/\.+$/, ""); return nk(d).includes(nk(n.nom)) ? `Le cours dit : « ${d}. »` : `« ${n.nom} », c'est ${d}.`; }
 function moteurPourquoi(x, c, good, p) {
   const mq = x.mq;
-  if (!good && c.why) p("Ce que tu as choisi : " + c.why + ".");
+  if (!good && c.why) p("Ce que tu as choisi : " + c.why.replace(/^(Faux|Non|Si)\s*[:.]\s*/i, "").replace(/[.\s]+$/, "") + ".");
   else if (!good && c.node && c.node.definition) p(`Ce que tu as choisi, « ${c.node.nom} », c'est autre chose. ` + defPhrase(c.node));
   const src = (mq.corrige || (mq.source && mq.source.texte) || "").trim();
   if (src) p("Dans ton cours" + (mq.source && mq.source.page ? " (page " + mq.source.page + ")" : "") + " : « " + src + " »");

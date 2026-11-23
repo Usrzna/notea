@@ -15,6 +15,10 @@ Mis à jour le 16 novembre 2026. À lire avant de reprendre le travail.
   - nouveau panneau « Ce que Notéa a compris » à la lecture d'un cours : matière, chapitre, alertes, notions clés avec importance, difficulté et pourquoi, ordre d'apprentissage, liens écrits dans le cours, bouton « Voir en carte mentale » ;
   - l'analyse est gardée avec le cours (`db.moteur`) et supprimée avec lui.
 
+## v2.2 (23 novembre) : QCM refaits
+
+Simon : « le QCM sert à rien ». Avant, les mauvaises réponses étaient les définitions des autres notions, n'importe lesquelles : on trouvait la bonne par élimination ou par la longueur. Maintenant (`08b-qcm.js`), chaque piège est une confusion plausible tirée du cours, avec son explication, et le quiz n'utilise plus de choix pris au hasard (`MQ_NOM = []` dans `app.js`). Test : « QCM : utiles ».
+
 ## Pas encore fait (prochaines étapes, dans l'ordre conseillé)
 
 1. ✅ **Fait en v1.5 (16 novembre)** : les questions du moteur sont dans le Quiz (QCM, situation, cause et effet, classer, vocabulaire, calcul ; dédoublonnées avec les questions de l'appli, 3 au plus du même genre), dans la révision du jour (jusqu'à 3 questions de compréhension par jour, corrigées par `evaluerReponse`, planifiées avec FSRS), dans l'examen blanc (questions ouvertes) et dans le prof particulier (notions clés, liens, ordre, points faibles). Chaque réponse est enregistrée dans `db.profil` avec `enregistrer`. Reste : utiliser `prochaineSeance` (il faut garder le graphe complet, pas seulement sa version compacte) et afficher les niveaux de maîtrise dans « Mes progrès ».

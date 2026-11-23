@@ -38,17 +38,8 @@
       Q("definition", 1, [n.id], {enonce: `Qu'est-ce que « ${n.nom} » ?`, reponseAttendue: d.definiens, corrige: d.texte, criteres: crit, source: src(u)});
       Q("directe", 1, [n.id], {enonce: `Quel mot du cours veut dire : « ${cacher(d.definiens, n.nom)} » ?`, reponseAttendue: n.nom, corrige: d.texte, criteres: criteres(n.nom, "", 3), source: src(u)});
       Q("reformulation", 2, [n.id], {enonce: `Explique « ${n.nom} » avec tes propres mots, sans recopier le cours.`, reponseAttendue: d.definiens, corrige: d.texte, criteres: crit, seuil: 0.5, source: src(u)});
-      // QCM : les autres choix sont d'autres définitions du même cours, d'abord celles qu'on confond.
-      const proches = n.confusions.map(c => c.avec), autres = defs.filter(x => x.n.id !== n.id).sort((a, b) => (proches.includes(b.n.id) - proches.includes(a.n.id)) || (b.n.importance - a.n.importance));
-      if (autres.length >= 2) { const pieges = autres.slice(0, 3);
-        Q("qcm", 2, [n.id], {enonce: `Quelle est la définition de « ${n.nom} » ?`, choix: melanger([d.definiens, ...pieges.map(x => x.d.definiens)], n.id), reponseAttendue: d.definiens, corrige: d.texte, criteres: [],
-          pieges: pieges.map(x => ({texte: x.d.definiens, notion: x.n.id, pourquoi: `c'est la définition de « ${x.n.nom} »`})), source: src(u)});
-        Q("qcm-notion", 1, [n.id], {enonce: `Quelle notion correspond à : « ${cacher(d.definiens, n.nom)} » ?`, choix: melanger([n.nom, ...pieges.map(x => x.n.nom)], n.id + "n"), reponseAttendue: n.nom, corrige: d.texte, criteres: [], source: src(u)}); }
       Q("flashcard", 1, [n.id], {enonce: n.nom, recto: n.nom, verso: d.definiens, reponseAttendue: d.definiens, corrige: d.texte, criteres: crit, source: src(u)});
     });
-    // Mise en situation : un exemple du cours, la notion cachée.
-    g.noeuds.forEach(n => (n.exemples || []).forEach(ex => { const u = uById.get(ex.unite); if (!sur(u)) return; const t = cacher(ex.texte, n.nom); if (t === ex.texte) return;
-      Q("situation", 3, [n.id], {enonce: `Lis cette situation : « ${t} » De quelle notion du cours s'agit-il ?`, reponseAttendue: n.nom, corrige: ex.texte, criteres: criteres(n.nom, "", 3), source: src(u)}); }));
     // Questions sur les relations (seulement les liens écrits dans le cours).
     const parType = t => g.aretes.filter(a => a.type === t && a.statut === STATUT.CONFIRME && g.byId.has(a.de) && g.byId.has(a.vers));
     parType("provoque").forEach(a => { const u = uById.get(a.unite); if (!sur(u)) return; const eff = a.effet ? (a.effet === "hausse" ? "une hausse de " : "une baisse de ") : "";
@@ -84,6 +75,8 @@
       const autres = [...new Set(as.map(a => a.de === n.id ? a.vers : a.de))].slice(0, 3);
       Q("synthese", 6, [n.id, ...autres], {enonce: `Explique comment « ${n.nom} » est relié à ${autres.map(id => "« " + nom(id) + " »").join(", ")}.`, reponseAttendue: as.slice(0, 3).map(a => a.preuve).join(" "),
         corrige: as.slice(0, 4).map(a => `« ${nom(a.de)} » ${NM.NOMS_REL[a.type]} « ${nom(a.vers)} ».`).join(" "), criteres: autres.flatMap(id => criteres(nom(id), "", 2)), seuil: 0.5, source: src(uById.get(as[0].unite))}); });
+    // QCM de compréhension (08b-qcm.js) : les mauvaises réponses sont des erreurs plausibles, avec leur explication.
+    if (NM.qcm) NM.qcm(g, comp, ped).forEach(q => out.push(q));
     // Pas de doublons : même type et mêmes notions, ou énoncés presque identiques.
     const garde = [], cles = new Set();
     out.sort((a, b) => b.pertinence - a.pertinence).forEach(q => { const k = q.type + "|" + q.notions.join(","); if (cles.has(k)) return;
