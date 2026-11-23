@@ -1,6 +1,6 @@
 # Moteur de compréhension : où on en est
 
-Mis à jour le 16 novembre 2026. À lire avant de reprendre le travail.
+Mis à jour le 23 novembre 2026. À lire avant de reprendre le travail.
 
 ## Fait et testé
 
@@ -18,6 +18,16 @@ Mis à jour le 16 novembre 2026. À lire avant de reprendre le travail.
 ## v2.2 (23 novembre) : QCM refaits
 
 Simon : « le QCM sert à rien ». Avant, les mauvaises réponses étaient les définitions des autres notions, n'importe lesquelles : on trouvait la bonne par élimination ou par la longueur. Maintenant (`08b-qcm.js`), chaque piège est une confusion plausible tirée du cours, avec son explication, et le quiz n'utilise plus de choix pris au hasard (`MQ_NOM = []` dans `app.js`). Test : « QCM : utiles ».
+
+## v2.3 (23 novembre) : des questions qui pourraient tomber en contrôle
+
+Simon : « le fond des questions n'est pas pertinent par rapport aux questions qui pourraient tomber en contrôle ». Nouveau module `08c-examen.js` :
+- questions avec les consignes des profs, tirées du cours : « Définis… », « Distingue A, B et C », « Cite les deux phases de… », « Quelles sont les causes de… », « Décris les étapes de… », « Énonce le théorème… », « Donne la formule… », « Cas pratique… Justifie », une question par partie du plan, et les questions écrites dans le cours ;
+- une note « examen » sur 100 pour chaque question : poids du type de question dans la matière (droit : cas pratique ; histoire : causes, dates ; maths : énoncer, calculer…) × poids de la notion pour le contrôle (définie, dans un titre, en gras, « à retenir », formule) ;
+- sous 30 : retirée. Le reste est rangé du plus probable au moins probable ;
+- tous les outils suivent cet ordre : quiz et révision du jour (`pertinence`), examen blanc (tri par note + un peu de hasard), prof particulier (liste « questions qui ont le plus de chances de tomber ») ;
+- les cours déjà importés sont refaits un par un au démarrage (`majQuestionsControle`), en gardant les révisions en cours.
+Test : « Questions de contrôle ». Reste à faire : valider les poids avec des profs (vrais sujets de contrôle).
 
 ## Pas encore fait (prochaines étapes, dans l'ordre conseillé)
 

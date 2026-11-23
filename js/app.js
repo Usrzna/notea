@@ -1617,7 +1617,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "2.2";
+const VERSION = "2.3";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -2305,10 +2305,13 @@ Object.assign(SUBS, {jeux: "Choisis ta réponse : la carte se retourne et t'expl
 // Le quiz ne garde que les QCM du moteur dont les mauvaises réponses sont de vraies erreurs possibles (08b-qcm.js).
 // Plus de choix tirés au hasard parmi les notions : une question qu'on réussit sans comprendre ne sert à rien.
 var MQ_NOM = [];
-var MQ_REV = ["reformulation", "situation", "causalite", "comparaison", "condition", "dependance", "partie", "categorie", "lieu", "calcule-quoi", "calcul", "synthese"];
+// Révision du jour et examen blanc : d'abord les questions « de contrôle » (08c-examen.js), triées par chance de tomber.
+var MQ_REV = ["question-cours", "cours", "distinguer", "causes", "consequences", "citer", "enonce", "cas", "expliquer", "dater", "reformulation", "situation", "causalite", "comparaison", "condition", "dependance", "partie", "categorie", "lieu", "calcule-quoi", "calcul", "synthese"];
 var MQ_TAG = {"qcm-juste": "Laquelle est juste ?", "qcm-cause": "Cause et effet", "qcm-date": "Date", "qcm-situation": "Situation", "qcm-ordre": "Ordre", "qcm-intrus": "L'intrus", qcm: "Définition", "qcm-notion": "Définition", directe: "Vocabulaire", situation: "Situation", categorie: "Classer", lieu: "Où ?", condition: "Condition",
   "calcule-quoi": "Formule", causalite: "Cause et effet", calcul: "Calcul", reformulation: "Avec tes mots", comparaison: "Comparer", dependance: "Dépend de",
-  partie: "Les éléments", synthese: "Relier les idées", definition: "Définition", chronologie: "Ordre"};
+  partie: "Les éléments", synthese: "Relier les idées", definition: "Définition", chronologie: "Ordre",
+  "question-cours": "Question du cours", cours: "Question de cours", distinguer: "Distinguer", causes: "Les causes", consequences: "Les conséquences", citer: "Citer",
+  enonce: "Énoncer", cas: "Cas pratique", expliquer: "Expliquer", dater: "Date"};
 function moteurOK() { return typeof NoteaMoteur !== "undefined"; }
 function profil() { if (!db.profil && moteurOK()) db.profil = NoteaMoteur.nouveauProfil(); return db.profil; }
 function moteurNote(mq, score, err) {
@@ -2406,7 +2409,8 @@ function mqFeedback(n, v) {
 /* ---------- Examen blanc : les questions ouvertes du moteur ---------- */
 function mqExam(qs, m, form, nb) {
   if (!moteurOK() || (form !== "ouv" && form !== "mix")) return qs;
-  const bank = shuffle(moteurBanque(m, "").filter(q => MQ_REV.includes(q.type) && q.type !== "calcul"));
+  // Les questions les plus probables au contrôle d'abord (un peu de hasard pour varier d'un examen à l'autre).
+  const bank = moteurBanque(m, "").filter(q => MQ_REV.includes(q.type) && q.type !== "calcul").map(q => [q, (q.examen || 50) + Math.random() * 12]).sort((a, b) => b[1] - a[1]).map(x => x[0]);
   const want = form === "ouv" ? Math.ceil(nb / 2) : Math.ceil(nb / 3);
   const nomDe = x => { const f = x.n && factOf(x.n); return nk(f ? f.term : x.n ? answerOf(x.n) : ""); }, pris = new Set();
   bank.filter(q => { const nd = moteurNoeud(q.cid, q.notions[0]), k = nd ? nk(nd.nom) : q.id; if (pris.has(k)) return false; pris.add(k); return true; }).slice(0, want).forEach((q, i) => {
@@ -2428,6 +2432,8 @@ function moteurContexte(m) {
     const liens = (a.aretes || []).filter(r => r.statut === "confirme" && r.type !== "associe" && byId.has(r.de) && byId.has(r.vers)).slice(0, 12);
     if (liens.length) { lines.push("Liens écrits dans le cours :"); liens.forEach(r => lines.push(`- « ${byId.get(r.de).nom} » ${NR[r.type] || r.type} « ${byId.get(r.vers).nom} »`)); }
     const ord = (a.ordre || []).map(id => byId.get(id)).filter(Boolean).map(n => n.nom); if (ord.length > 1) lines.push("Ordre conseillé pour apprendre : " + ord.slice(0, 10).join(" → "));
+    const probables = (a.questions || []).filter(q => q.examen != null).slice().sort((x, y) => y.examen - x.examen).slice(0, 6);
+    if (probables.length) lines.push("Questions qui ont le plus de chances de tomber au contrôle (entraîne l'élève dessus, avec ces consignes) :\n" + probables.map(q => "- " + q.enonce).join("\n"));
     const faibles = p ? a.noeuds.filter(n => { const e = p.notions[n.id]; return e && e.preuves && e.preuves.length && NoteaMoteur.niveauMaitrise(e) < 3; }).map(n => n.nom) : [];
     if (faibles.length) lines.push("L'élève maîtrise encore mal : " + faibles.slice(0, 6).join(", ") + ". Commence par ces notions, en respectant l'ordre conseillé.");
   });
@@ -3434,6 +3440,23 @@ function originePourquoi(x, good, p) {
     const c = NP.confusionFrequente(x); if (c) p("🔁 Tu confonds souvent avec « " + c + " ». Compare bien les deux."); }
   if (x.srcRef && x.srcRef.page) p("📖 C'est dans ton cours, page " + x.srcRef.page + ".");
 }
+
+/* ---------- v2.3 : les cours déjà importés reçoivent les nouvelles questions de contrôle ----------
+   Un cours à la fois, quand le navigateur est libre. On garde où en est l'élève sur les questions qui existent encore. */
+function majQuestionsControle() {
+  if (!moteurOK() || !db.moteur) return;
+  const c = (db.cours || []).find(c => c.text && db.moteur[c.id] && db.moteur[c.id].questions && !db.moteur[c.id].questions.some(q => q.examen != null) && !db.moteur[c.id].qMaj);
+  if (!c) return;
+  const vieux = db.moteur[c.id];
+  try {
+    const a = NoteaMoteur.analyserCours([{nom: c.mat || "Cours", type: "texte", texte: c.text}], {matiere: c.mat || undefined}), neuf = compacterMoteur(a);
+    const etat = new Map(vieux.questions.map(q => [q.id, q]));
+    neuf.questions.forEach(q => { const o = etat.get(q.id); if (o) ["qz", "D", "S", "last", "due", "reps", "lapses", "mark"].forEach(k => { if (o[k] != null) q[k] = o[k]; }); });
+    neuf.qMaj = true; db.moteur[c.id] = neuf;
+  } catch (e) { console.error("moteur", e); vieux.qMaj = true; }
+  save(); setTimeout(majQuestionsControle, 400);
+}
+setTimeout(majQuestionsControle, 1500);
 
 /* ---------- Le bouton « retour » du navigateur marche, et la page ouverte est gardée ---------- */
 window.addEventListener("popstate", () => tab(TABS[location.hash.slice(1)] ? location.hash.slice(1) : "jour", true));

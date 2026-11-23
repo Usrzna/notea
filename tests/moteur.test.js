@@ -219,3 +219,20 @@ test("Mesures sur les cours inédits : seuils minimaux", () => {
   const {resF} = require("./mesures.js"), moy = f => resF.reduce((s, r) => s + f(r), 0) / resF.length;
   assert.ok(moy(r => r.defRappel) >= 0.9); assert.ok(moy(r => r.relRappelSouple) >= 0.8); assert.ok(moy(r => r.relPrecisionSouple) >= 0.8);
 });
+test("Questions de contrôle : consignes de prof, rangées par chance de tomber", () => {
+  const fs = require("fs"), path = require("path"), lire = f => NM.analyserCours([{nom: f, texte: fs.readFileSync(path.join(__dirname, "corpus", f), "utf8")}]);
+  const svt = lire("svt-photosynthese.txt").questions, histo = lire("histoire-ww1.txt").questions, droit = lire("droit-propriete.txt").questions, maths = lire("maths-pythagore.txt").questions;
+  // Chaque question a une note examen, et la liste est rangée de la plus probable à la moins probable.
+  [svt, histo, droit, maths].forEach(qs => { assert.ok(qs.every(q => q.examen >= 30 && q.examen <= 100)); assert.ok(qs.every((q, i) => !i || qs[i - 1].examen >= q.examen)); });
+  const e = qs => qs.map(q => q.enonce);
+  assert.ok(e(svt).includes("Décris les étapes de la photosynthèse."));
+  assert.ok(e(svt).includes("De quels facteurs dépend la photosynthèse ?"));
+  assert.ok(e(svt).includes("Cite les deux phases de la photosynthèse."));
+  assert.ok(e(histo).includes("Quelles sont les causes de la première guerre mondiale ?"));
+  assert.ok(e(droit).some(t => /^Distingue « usus », « fructus » et « abusus »/.test(t)), "les trois attributs, sans le droit de propriété lui-même");
+  assert.ok(e(maths)[0] === "Énonce le théorème de Pythagore.");
+  // Les questions qui tombent rarement passent après : jamais une flashcard ou un intrus en tête.
+  [svt, histo, droit, maths].forEach(qs => qs.slice(0, 5).forEach(q => assert.ok(!["flashcard", "directe", "categorie", "qcm-intrus"].includes(q.type), q.type)));
+  // Pas de rubrique prise pour une notion (« Méthode »).
+  assert.ok(!e(maths).some(t => /Méthode/.test(t)));
+});

@@ -7,7 +7,7 @@
 (function (root) {
   "use strict";
   const NM = root.NoteaMoteur;
-  const VERSION = "1.0";
+  const VERSION = "1.1";   // 1.1 : questions de contrôle et note « examen »
 
   function analyserCours(sources, opts = {}) {
     const t0 = Date.now(), etapes = {};
@@ -18,7 +18,7 @@
     mesure("pertinence", () => NM.noter(comprehension, classification, opts));
     const graphe = mesure("graphe", () => NM.construireGraphe(comprehension, structure, classification, opts.coursId || structure.id));
     const pedagogie = mesure("pedagogie", () => NM.pedagogie(graphe, classification));
-    const questions = mesure("questions", () => NM.generer(graphe, comprehension, pedagogie, opts));
+    const questions = mesure("questions", () => { const q = NM.generer(graphe, comprehension, pedagogie, opts); return NM.examen ? NM.examen(q, graphe, comprehension, classification, structure, pedagogie) : q; });
     const schemas = mesure("schemas", () => NM.schemas(graphe, structure, comprehension));
     const ordre = NM.ordreApprentissage(graphe), verification = NM.verification(graphe);
     // Contrôle qualité final : aucune question sans source, aucune question sur un passage douteux.
