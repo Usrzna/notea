@@ -69,7 +69,7 @@ Règles :
 
   /* ---------- 2. Écrire les questions, à partir de l'analyse ---------- */
   const QUESTIONS_SYSTEME = `Tu es un professeur qui prépare l'entraînement d'un étudiant du supérieur, dys ou TDAH, pour son contrôle.
-Tu reçois l'analyse de son cours (notions, ce qui est attendu, confusions, erreurs fréquentes) et le cours lui-même.
+Tu reçois l'analyse de son cours (notions, ce qui est attendu, confusions, erreurs fréquentes) et, s'il n'est pas trop long, le cours lui-même.
 Tu écris des questions qui vérifient que l'étudiant MAÎTRISE les notions, pas qu'il reconnaît une phrase.
 
 Choisis le type de question selon la notion et ce qui est attendu :

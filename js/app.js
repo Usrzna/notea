@@ -2758,7 +2758,7 @@ async function iaComprendreCours(src) {
 async function iaQuestionsCours(src, analyse) {
   const ana = JSON.stringify(Object.assign({}, analyse, {questions: undefined}));
   const r = await iaCall({serveur: {fn: "comprendre", body: {etape: "questions", mat: src.mat, texte: src.text, analyse: ana}}, system: C_IA.QUESTIONS_SYSTEME, maxTokens: 32000, effort: "medium",
-    format: {type: "json_schema", schema: C_IA.QUESTIONS_SCHEMA}, messages: [{role: "user", content: `L'analyse du cours :\n<analyse>\n${ana}\n</analyse>\n\n${iaCoursMsg(src)}\n\nÉcris les questions d'entraînement.`}]});
+    format: {type: "json_schema", schema: C_IA.QUESTIONS_SCHEMA}, messages: [{role: "user", content: `L'analyse du cours :\n<analyse>\n${ana}\n</analyse>\n\n${src.text.length <= 8000 ? iaCoursMsg(src) : "(Le cours entier n'est pas joint : il est long. L'analyse contient l'essentiel, les explications et les citations.)"}\n\nÉcris les questions d'entraînement.`}]});
   const qs = iaJSON(r.text, "questions").questions.filter(q => q.question && (q.format === "qcm" ? (q.choix || []).length >= 3 && q.choix.filter(c => c.juste).length === 1 : !!q.reponse_attendue))
     .map(q => Object.assign(q, {id: "ia" + uid()}));
   return {qs, r};
