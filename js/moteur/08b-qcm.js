@@ -102,7 +102,8 @@
     comp.unites.filter(u => sur(u) && /\b(1[0-9]{3}|20[0-2][0-9])\b/.test(u.texte) && u.texte.split(/\s+/).length >= 5).forEach(u => {
       const an = u.texte.match(/\b(1[0-9]{3}|20[0-2][0-9])\b/)[1], ms = NM.mentions(u.texte, comp.notions); if (!ms.length) return;
       const autres = ans.filter(x => x !== an).sort((x, y) => Math.abs(x - an) - Math.abs(y - an)).slice(0, 3);
-      while (autres.length < 3) { const v = String(Number(an) + [1, -1, 2, -2][autres.length]); if (!autres.includes(v) && v !== an) autres.push(v); }
+      // Compléter avec des années voisines. On avance dans les décalages (+1, -1, +2, -2, +3…) : avant, le même décalage était réessayé sans fin quand l'année existait déjà (cours avec 2020 et 2022 → le navigateur plantait).
+      for (let k = 1; autres.length < 3 && k <= 20; k++) for (const d of [k, -k]) { const v = String(Number(an) + d); if (autres.length < 3 && !autres.includes(v) && v !== an) autres.push(v); }
       const pieges = autres.map(x => ({texte: fin(u.texte.replace(an, x)), pourquoi: `Faux : le cours dit ${an}, pas ${x}.`}));
       Q("qcm-date", 1, [ms[0].c.id], {enonce: `Quelle phrase donne la bonne date ?`, reponseAttendue: fin(u.texte), corrige: u.texte, pieges: pieges.slice(0, 3), source: src(u), poids: 0.8}); });
 
