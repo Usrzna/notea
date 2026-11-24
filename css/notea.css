@@ -646,3 +646,6 @@ body.zen .page-masc{display:none!important}
 /* v2.2 : l'IA, pour apprendre chaque notion */
 .aide-ia{margin-top:4px}.aide-ia summary{cursor:pointer}.aide-txt{white-space:pre-wrap;background:var(--surface-2);border-radius:var(--radius-sm);padding:8px 12px;margin:6px 0 0}
 #qc-rep{font:inherit;font-size:18px;line-height:1.5;padding:10px 12px;border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:var(--surface);color:var(--text);resize:vertical}
+/* v2.4 : l'IA travaille en arrière-plan */
+.ia-fond{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 84px);transform:translateX(-50%);z-index:60;max-width:min(560px,calc(100vw - 32px));background:var(--surface);color:var(--text);border:1px solid var(--line-strong);border-radius:var(--radius-pill);padding:8px 16px;font-size:15px;box-shadow:var(--shadow-1)}
+@media (min-width:900px){.ia-fond{bottom:20px}}

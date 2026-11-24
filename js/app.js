@@ -2764,32 +2764,68 @@ async function iaQuestionsCours(src, analyse) {
   return {qs, r};
 }
 /* L'IA gratuite est parfois saturée : on attend un peu et on réessaie tout seul (2 fois), au lieu de laisser l'élève refaire. */
-async function iaEssayer(f, etat, quoi) {
+async function iaEssayer(f, etat, quoi, patient) {
+  const attentes = patient ? [30, 60, 60, 90, 120] : [20, 40];   // en arrière-plan, on peut attendre plus longtemps sans gêner l'élève
   for (let i = 0; ; i++) {
     try { return await f(); }
     catch (e) {
       const sature = /très demandée|trop de temps|surchargée|Trop de demandes/i.test((e && e.message) || "");
-      if (!sature || i >= 2) throw e;
-      for (let s = i ? 40 : 20; s > 0; s--) { etat(`L'IA est très demandée. Notéa réessaie dans ${s} s… (${quoi})`); await new Promise(r => setTimeout(r, 1000)); }
+      if (!sature || i >= attentes.length) throw e;
+      for (let s = attentes[i]; s > 0; s--) { etat(`L'IA est très demandée. Notéa réessaie dans ${s} s… (${quoi})`); await new Promise(r => setTimeout(r, 1000)); }
     }
   }
 }
 const iaPrixDe = r => { const u = r.usage || {}; return r.cout ? 0 : iaPrix(iaModel(), (u.input_tokens || 0) + (u.cache_read_input_tokens || 0), u.output_tokens || 0); };
-/* L'analyse complète d'un cours. etat(texte) : pour dire où on en est. Si les questions échouent, l'analyse est gardée. */
-async function iaAnalyser(src, etat) {
+/* v2.4 : un gros cours est coupé en morceaux d'environ 11 000 caractères, de préférence à un titre ou à une ligne vide.
+   Chaque morceau est assez petit pour l'IA de secours (Groq gratuit : 8 000 jetons par minute). */
+var IA_MORCEAU = 11000;
+function iaMorceaux(text, taille = IA_MORCEAU) {
+  if (text.length <= taille * 1.3) return [text];
+  const titre = l => /^\s*(#{1,6}\s|\*\*[^*]{3,}\*\*\s*$|[IVX]+[.)]\s|\d+[.)]\s+[A-ZÉÈÀ]|[A-ZÉÈÀÇ][A-ZÉÈÀÇ0-9\s'’,:-]{8,}$)/.test(l);
+  const out = []; let cur = [], n = 0;
+  text.split("\n").forEach(l => {
+    if (n > 0 && ((n > taille * 0.7 && titre(l)) || (n > taille && !l.trim()) || (n > taille * 1.25 && !l.trim().startsWith("|")))) { out.push(cur.join("\n")); cur = []; n = 0; }
+    cur.push(l); n += l.length + 1; });
+  if (cur.length) out.push(cur.join("\n"));
+  if (out.length > 1 && out[out.length - 1].length < taille * 0.25) { const d = out.pop(); out[out.length - 1] += "\n" + d; }   // un tout petit reste rejoint le morceau d'avant
+  return out.filter(x => x.trim());
+}
+/* Les morceaux analysés sont réunis en UNE fiche : notions en double fusionnées, liens et questions renumérotés. */
+function iaFusion(parts) {
+  const data = {titre: "", matiere_type: "", objectif: "", resume: "", plan: [], notions: [], liens: [], a_ne_pas_apprendre: [], questions: []}, vus = new Map(), plusieurs = parts.length > 1;
+  parts.forEach((p, i) => { const d = p.d; if (!d) return; const pre = plusieurs ? "p" + (i + 1) + "-" : "", ren = new Map();
+    data.titre = data.titre || d.titre || ""; data.matiere_type = data.matiere_type || d.matiere_type || ""; data.objectif = data.objectif || d.objectif || "";
+    if (d.resume) data.resume += (data.resume ? " " : "") + d.resume;
+    data.plan.push(...(d.plan || [])); data.a_ne_pas_apprendre.push(...(d.a_ne_pas_apprendre || []));
+    const neuves = [];
+    (d.notions || []).forEach(x => { const k = nk(x.terme || ""); if (vus.has(k)) { ren.set(x.id, vus.get(k)); return; } const id = pre + x.id; ren.set(x.id, id); vus.set(k, id); neuves.push(Object.assign({}, x, {id})); });
+    neuves.forEach(x => { x.prerequis = (x.prerequis || []).map(id => ren.get(id) || pre + id); data.notions.push(x); });
+    (d.liens || []).forEach(l => data.liens.push(Object.assign({}, l, {de: ren.get(l.de) || pre + l.de, vers: ren.get(l.vers) || pre + l.vers})));
+    (p.qs || []).forEach(q => data.questions.push(Object.assign(q, {notion: ren.get(q.notionLocale || q.notion) || pre + (q.notionLocale || q.notion), notionLocale: q.notionLocale || q.notion}))); });
+  return data;
+}
+/* L'analyse complète d'un cours, morceau par morceau. Tout est gardé au fur et à mesure : si l'appli se ferme, on reprend où on en était.
+   etat(texte) : pour dire où on en est. patient : en arrière-plan (plus de nouveaux essais quand l'IA est saturée). */
+async function iaAnalyser(src, etat, patient, refaire) {
   etat = etat || (() => {});
-  const old = db.ia[src.key];
-  let a = old && old.v === 2 && !(old.data.questions || []).length && old.texteLong === src.text.length ? old : null;   // les questions avaient échoué : on reprend à l'étape 2
-  if (!a) {
-    etat("Notéa lit et comprend ton cours…");
-    const {d, r} = await iaEssayer(() => { etat("Notéa lit et comprend ton cours…"); return iaComprendreCours(src); }, etat, "compréhension du cours");
-    a = {v: 2, mat: src.mat, label: src.label, date: Date.now(), model: r.model, prix: iaPrixDe(r), cout: r.cout || 0, texteLong: src.text.length, data: Object.assign(d, {questions: []})};
-    db.ia[src.key] = a; iaVersNotions(src, a); save();
+  const morceaux = iaMorceaux(src.text), n = morceaux.length, de = i => n > 1 ? ` (partie ${i + 1} sur ${n})` : "";
+  let a = db.ia[src.key];
+  if (refaire || !a || a.v !== 2 || a.texteLong !== src.text.length || !a.parts || a.parts.length !== n) {
+    a = {v: 2, mat: src.mat, label: src.label, date: Date.now(), model: "", prix: 0, cout: 0, texteLong: src.text.length, parts: morceaux.map(() => ({})), enCours: true,
+      data: {titre: "", objectif: "", resume: "", plan: [], notions: [], liens: [], a_ne_pas_apprendre: [], questions: []}};
+    db.ia[src.key] = a; save();
   }
-  etat("Notéa prépare tes questions…");
-  const {qs, r} = await iaEssayer(() => { etat("Notéa prépare tes questions…"); return iaQuestionsCours(src, a.data); }, etat, "questions");
-  a.data.questions = qs; a.prix = (a.prix || 0) + iaPrixDe(r); a.cout = (a.cout || 0) + (r.cout || 0); a.model = r.model || a.model;
-  iaLierQuestions(src.key, a); save();
+  a.enCours = true;
+  const compter = r => { a.prix = (a.prix || 0) + iaPrixDe(r); a.cout = (a.cout || 0) + (r.cout || 0); a.model = r.model || a.model; };
+  // 1. Comprendre chaque morceau. Les notions arrivent dans l'appli dès le premier morceau compris.
+  for (let i = 0; i < n; i++) { const p = a.parts[i]; if (p.d) continue; const s = Object.assign({}, src, {text: morceaux[i]});
+    const {d, r} = await iaEssayer(() => { etat("Notéa lit et comprend ton cours…" + de(i)); return iaComprendreCours(s); }, etat, "compréhension" + de(i), patient);
+    p.d = d; compter(r); a.data = iaFusion(a.parts); iaVersNotions(src, a); save(); }
+  // 2. Les questions de chaque morceau, écrites à partir de sa compréhension.
+  for (let i = 0; i < n; i++) { const p = a.parts[i]; if (p.qs) continue; const s = Object.assign({}, src, {text: morceaux[i]});
+    const {qs, r} = await iaEssayer(() => { etat("Notéa prépare tes questions…" + de(i)); return iaQuestionsCours(s, p.d); }, etat, "questions" + de(i), patient);
+    p.qs = qs; compter(r); a.data = iaFusion(a.parts); iaLierQuestions(src.key, a); save(); }
+  a.enCours = false; a.date = Date.now(); a.data = iaFusion(a.parts); iaVersNotions(src, a); iaLierQuestions(src.key, a); save();
   return a;
 }
 /* Les notions de l'IA deviennent des notions de l'appli (et remplacent les notions « phrase » du cours pas encore travaillées). */
@@ -2893,7 +2929,7 @@ function renderComprendre() {
   const deja = a ? `Analysé le ${new Date(a.date).toLocaleDateString("fr-FR")} avec ${(IA_MODELES[a.model] || [/^gemini/i.test(a.model || "") ? "Gemini" : a.model])[0]} (${a.cout ? a.cout + " crédits" : fmtPrix(a.prix || 0)}). ` : "";
   $("cp-info").textContent = !voie ? "Pour utiliser l'IA, connecte-toi dans Paramètres → Mon compte Notéa. C'est gratuit." :
     bloque ? "Avant la première analyse, donne ton accord dans Paramètres → Mon compte Notéa." :
-    voie === "compte" ? deja + `Une analyse coûte ${COUT_ANALYSE} crédits${p ? `. Il t'en reste ${p.credits}` : ""}. Elle est faite une seule fois, puis gardée sur ton appareil.` :
+    voie === "compte" ? deja + `Une analyse coûte ${COUT_ANALYSE * iaMorceaux(src.text).length} crédits${p ? `. Il t'en reste ${p.credits}` : ""}. Elle est faite une seule fois, puis gardée sur ton appareil.` :
     deja + `Une analyse avec ${IA_MODELES[iaModel()][0]} coûte ${fmtPrix(est.prix)}. Elle est faite une seule fois, puis gardée sur ton appareil.`;
   $("cp-res").replaceChildren(a ? renderIA(a) : el("p", "muted", "Ce cours n'est pas encore analysé."));
 }
@@ -2943,31 +2979,56 @@ function notionIA(n) {
 $("cp-src").addEventListener("change", () => { cpSel = $("cp-src").value; renderComprendre(); });
 /* Lancer l'analyse d'un cours, avec le temps qui passe et l'étape en cours. ecrire(texte) affiche où on en est. */
 var iaEnCours = null;
-async function iaLancer(src, ecrire) {
-  if (iaEnCours) throw new Error("Une analyse est déjà en cours. Attends qu'elle finisse.");
+async function iaLancer(src, ecrire, patient, refaire) {
+  if (iaEnCours) throw new Error("L'IA travaille déjà sur un cours. Elle passera à celui-ci juste après.");
   if (src.text.length > (iaVoie() === "compte" ? TEXTE_MAX_COMPTE : 400000)) throw new Error("Ce cours est très long. Coupe-le en plusieurs cours avant de l'analyser.");
   let etape = "Notéa lit ton cours…"; const t0 = Date.now(), tic = setInterval(() => ecrire(`${etape} ${Math.round((Date.now() - t0) / 1000)} s`), 1000);
   iaEnCours = src.key;
-  try { return await iaAnalyser(src, t => { etape = t; ecrire(t); }); } finally { clearInterval(tic); iaEnCours = null; }
+  try { return await iaAnalyser(src, t => { etape = t; ecrire(t); }, patient, refaire); } finally { clearInterval(tic); iaEnCours = null; }
 }
 const iaBilan = a => `${a.data.notions.length} notions (${a.data.notions.filter(n => n.importance === "essentielle").length} essentielles), ${(a.data.questions || []).length} questions d'entraînement` + (a.cout ? ` · ${a.cout} crédits` : a.prix ? ` · ${fmtPrix(a.prix)}` : "");
 $("cp-go").addEventListener("click", async () => {
   const src = iaSources().find(x => x.key === cpSel); if (!src) return;
+  const a0 = db.ia[src.key], refaire = !!(a0 && !a0.enCours);   // « Refaire l'analyse » : on repart de zéro ; sinon on reprend où on en était
   const b = $("cp-go"); b.disabled = true;
-  try { const a = await iaLancer(src, t => { $("cp-info").textContent = t; }); note("Cours compris : " + iaBilan(a) + ".", "ok"); renderToday(); }
+  try { const a = await iaLancer(src, t => { $("cp-info").textContent = t; }, false, refaire); note("Cours compris : " + iaBilan(a) + ".", "ok"); renderToday(); }
   catch (e) { note(iaErreur(e), "err"); }
   b.disabled = false; renderComprendre();
 });
 /* Après l'import : connecté, l'IA comprend le cours toute seule (rien à choisir). */
 function iaAuto() { const p = compte && compte.profil; return iaVoie() === "compte" && p && p.consentement_le && p.credits >= COUT_ANALYSE; }
+/* v2.4 : l'IA travaille en ARRIÈRE-PLAN. L'élève révise tout de suite avec ses notions ; la fiche de l'IA arrive toute seule.
+   Les cours à faire sont gardés dans db.iaAFaire : si l'appli se ferme, on reprend à la prochaine ouverture. */
 async function iaApprofondir(coursId, box) {
-  const src = iaSources().find(x => x.key === coursId); if (!src) return;
-  const ligne = el("p", "msg ok"); ligne.setAttribute("role", "status"); box.append(ligne);
-  try { const a = await iaLancer(src, t => { ligne.textContent = "✨ " + t; });
-    ligne.textContent = "✨ L'IA a compris ton cours : " + iaBilan(a) + ". Tes notions sont prêtes.";
-    const v = el("button", "", "Voir ce qu'il faut retenir"); v.addEventListener("click", () => { cpSel = coursId; tab("comprendre"); }); ligne.append(" ", v);
-    renderList(); renderToday(); }
-  catch (e) { ligne.className = "msg warn"; ligne.textContent = "L'IA n'a pas pu analyser ce cours maintenant : " + iaErreur(e) + " Tu peux réessayer dans « Comprendre ». Tes notions sont quand même prêtes."; }
+  db.iaAFaire = [...new Set((db.iaAFaire || []).concat(coursId))]; save();
+  const ligne = el("p", "msg ok"); ligne.id = "ia-ligne-" + coursId; ligne.setAttribute("role", "status");
+  ligne.textContent = "✨ L'IA approfondit ton cours en arrière-plan. Tu peux commencer à réviser maintenant : la fiche et les questions arriveront toutes seules.";
+  box.append(ligne); iaFond();
+}
+var iaFondTimer = null;
+function iaFondEtat(c, t) {
+  let b = $("ia-fond"); if (!b) { b = el("div", "ia-fond"); b.id = "ia-fond"; b.setAttribute("role", "status"); document.body.append(b); }
+  b.hidden = !t; if (t) b.textContent = "✨ " + (c.mat || "Cours") + " : " + t;
+  const l = $("ia-ligne-" + c.id); if (l && t) l.textContent = "✨ " + t + " Tu peux réviser pendant ce temps.";
+}
+async function iaFond() {
+  clearTimeout(iaFondTimer);
+  if (iaEnCours || !iaAuto()) return;
+  const aFaire = id => (db.iaAFaire || []).includes(id) || (db.ia[id] && db.ia[id].enCours);
+  const c = (db.cours || []).find(x => aFaire(x.id)), src = c && iaSources().find(x => x.key === c.id);
+  if (!c) return;
+  if (!src) { db.iaAFaire = db.iaAFaire.filter(x => x !== c.id); save(); return; }
+  try {
+    const a = await iaLancer(src, t => iaFondEtat(c, t), true);
+    db.iaAFaire = (db.iaAFaire || []).filter(x => x !== c.id); save(); iaFondEtat(c, "");
+    note(`✨ L'IA a compris « ${c.mat || "ton cours"} » : ` + iaBilan(a) + ".", "ok");
+    const l = $("ia-ligne-" + c.id); if (l) { l.textContent = "✨ L'IA a compris ton cours : " + iaBilan(a) + "."; const v = el("button", "", "Voir ce qu'il faut retenir"); v.addEventListener("click", () => { cpSel = c.id; tab("comprendre"); }); l.append(" ", v); }
+    renderList(); renderToday(); iaFondTimer = setTimeout(iaFond, 2000);   // le cours suivant
+  } catch (e) {
+    iaFondEtat(c, "");
+    if (/crédits/i.test(iaErreur(e))) { db.iaAFaire = (db.iaAFaire || []).filter(x => x !== c.id); save(); note(iaErreur(e), "warn"); return; }
+    iaFondTimer = setTimeout(iaFond, 5 * 60 * 1000);   // l'IA est saturée : on réessaiera dans 5 minutes (ce qui est fait est gardé)
+  }
 }
 
 /* ---------- Paramètres : la clé et le modèle ---------- */
@@ -3018,7 +3079,7 @@ var SB_URL = "https://eqqglkglcegtxqaawfee.supabase.co";
 var SB_CLE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxcWdsa2dsY2VndHhxYWF3ZmVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ5Mjc3ODcsImV4cCI6MjExMDUwMzc4N30.wryWxS-e2kDGwAXYaUouVo-YHw_YADkXnwk4fKZUbCg";
 var SB_SDK = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
 var SB_STOCK = "sb-eqqglkglcegtxqaawfee-auth-token";
-var COUT_ANALYSE = 5, COUT_MESSAGE = 1, TEXTE_MAX_COMPTE = 120000;   // les mêmes que sur le serveur
+var COUT_ANALYSE = 2, COUT_MESSAGE = 1, TEXTE_MAX_COMPTE = 120000;   // les mêmes que sur le serveur
 var sbC = null, compte = null;   // compte = {email, profil} quand l'élève est connecté
 
 async function sbClient() {
@@ -3046,6 +3107,7 @@ async function compteCharger() {
     compte = {email: session.user.email, profil: error ? null : data};
   } catch (e) { /* hors ligne : on garde ce qu'on sait */ }
   renderCompte();
+  if (compte) setTimeout(iaFond, 3000);   // v2.4 : reprendre les analyses de cours en attente, en arrière-plan
 }
 
 /** Un appel au serveur de Notéa. Le jeton de l'élève prouve qui il est. */

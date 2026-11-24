@@ -1,6 +1,6 @@
 // Notéa v2.2 : l'IA comprend un cours, en 2 étapes (consignes dans js/ia-consignes.js, copiées dans _shared/ia.ts).
-//   etape "analyse"   : comprendre le cours (notions, attendus, méthodes, confusions…). 3 crédits.
-//   etape "questions" : écrire les questions à partir de l'analyse. 2 crédits.
+//   etape "analyse"   : comprendre le cours (notions, attendus, méthodes, confusions…). 1 crédit par morceau d'environ 11 000 caractères (l'appli envoie les gros cours en morceaux).
+//   etape "questions" : écrire les questions à partir de l'analyse. 1 crédit.
 // Le cours n'est pas gardé : il est envoyé à l'IA puis oublié.
 import { appelIA, ErreurEleve, servir } from "../_shared/commun.ts";
 import { IA } from "../_shared/ia.ts";
@@ -22,7 +22,7 @@ Deno.serve(servir({
     if (texte.length > TEXTE_MAX) return { erreur: `Ce cours est trop long (plus de ${TEXTE_MAX / 1000} 000 caractères). Coupe-le en plusieurs cours.` };
     const cours = `Matière : ${mat || "Cours"}\n\n<cours>\n${texte}\n</cours>`;
     if (etape === "analyse") return {
-      cout: 3,
+      cout: Math.min(3, Math.max(1, Math.ceil(texte.length / 14000))),   // 1 crédit par morceau (l'appli envoie des morceaux d'environ 11 000 caractères)
       faire: async (cle, model) => {
         const r = await appelIA(cle, {
           model, system: IA.ANALYSE_SYSTEME, maxTokens: 40000, schema: IA.ANALYSE_SCHEMA, reflexion: "medium", secours: FLASH, parModele: 75_000, forcer: b?.fournisseur === "groq" ? "groq" : undefined,
@@ -35,7 +35,7 @@ Deno.serve(servir({
     const analyse = typeof b?.analyse === "string" ? b.analyse : "";
     if (!analyse || analyse.length > ANALYSE_MAX) return { erreur: "Il faut d'abord l'analyse du cours." };
     return {
-      cout: 2,
+      cout: 1,
       faire: async (cle, model) => {
         const r = await appelIA(cle, {
           model, system: IA.QUESTIONS_SYSTEME, maxTokens: 40000, schema: IA.QUESTIONS_SCHEMA, reflexion: "medium", secours: FLASH, parModele: 75_000, forcer: b?.fournisseur === "groq" ? "groq" : undefined,
