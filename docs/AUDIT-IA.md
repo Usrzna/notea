@@ -32,3 +32,13 @@
 - Cours de plus de 120 000 caractères : à couper (une analyse doit tenir en 150 s sur le serveur gratuit).
 - Offre gratuite de Gemini : parfois saturée. L'élève voit « réessaie », ses crédits sont rendus.
 - Mode « ma propre clé » : même analyse et mêmes questions ; la correction des réponses écrites demande un compte Notéa (sinon l'élève se note lui-même).
+
+## 4. Version 2.4 (24 novembre 2026)
+
+- **Fiche de compréhension faite une fois, à l'import.** Connecté, l'IA comprend le cours toute seule après l'import. La fiche (notions reformulées, méthodes, pièges, questions) est gardée dans Notéa ; chaque outil y pioche sans rappeler l'IA. Seule la correction d'une réponse écrite rappelle l'IA.
+- **En arrière-plan.** L'élève révise tout de suite. Un petit bandeau montre où en est l'IA. Ce qui est fait est gardé : si l'appli se ferme, l'IA reprend à la prochaine ouverture (`db.iaAFaire`, `parts`).
+- **Gros cours en morceaux** d'environ 11 000 caractères, coupés aux titres, réunis ensuite en une seule fiche (`iaMorceaux`, `iaFusion`). 1 crédit par morceau pour comprendre, 1 pour les questions.
+- **Deux IA gratuites.** Groq (`GROQ_API_KEY`, modèle gpt-oss) d'abord pour les morceaux, la correction et le prof : 2 à 20 s. Gemini en secours (et pour un cours qui ne tient pas chez Groq). Limite connue de Groq gratuit : 8 000 jetons par minute.
+- **Moteur local** (sans IA, ou cours pas encore compris) : le mot à trouver est caché partout ; les questions dont la réponse se lit dans l'énoncé sont écartées. Un cours compris par l'IA n'utilise plus les questions du moteur local.
+- **Serveur** : les fonctions importent le code commun depuis GitHub à une version figée (`cdn.jsdelivr.net/gh/Usrzna/notea@<commit>/supabase/functions/_shared/…`). Pour redéployer : pousser, puis déployer `index.ts` avec le nouveau commit.
+- **Mesuré sur une vraie fiche** (Communication commerciale, 24 000 caractères) : import en 4 s, révision possible tout de suite ; fiche IA complète (27 notions, 33 questions, aucune réponse dans l'énoncé) en arrière-plan ; correction d'une réponse écrite en 2 s.
