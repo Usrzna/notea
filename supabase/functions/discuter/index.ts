@@ -31,7 +31,7 @@ Deno.serve(servir({
       cout: COUT,
       faire: async (cle, model) => {
         const r = await appelIA(cle, {
-          model, maxTokens: 4000, messages, reflexion: "low",
+          model, maxTokens: 4000, messages, reflexion: "low", prefere: "groq",
           system: DC_BASE + " " + DC_MODES[mode][1] + "\n\n" + IA.PROF_METHODE + "\n\nLes notions du cours et les difficultés de l'élève :\n" + contexte,
         });
         return { corps: { text: r.text.trim() }, tIn: r.tIn, tOut: r.tOut, modele: r.modele };

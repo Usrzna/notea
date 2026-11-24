@@ -24,7 +24,7 @@ Deno.serve(servir({
       cout: 0,
       faire: async (cle, model) => {
         const r = await appelIA(cle, {
-          model, system: IA.CORRIGER_SYSTEME, maxTokens: 3000, schema: IA.CORRIGER_SCHEMA, reflexion: "low", parModele: 40_000,
+          model, system: IA.CORRIGER_SYSTEME, maxTokens: 3000, schema: IA.CORRIGER_SCHEMA, reflexion: "low", parModele: 40_000, prefere: "groq", forcer: b?.fournisseur === "groq" ? "groq" : undefined,
           messages: [{ role: "user", content: JSON.stringify(demande) }],
         });
         let d: Record<string, unknown>;

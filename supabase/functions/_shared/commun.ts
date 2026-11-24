@@ -102,6 +102,7 @@ type Demande = {
   secours?: string[];                       // modèles de secours (l'analyse refuse les modèles « lite », trop faibles)
   parModele?: number;                       // temps max pour un modèle avant de passer au suivant
   forcer?: "groq";                          // pour les tests : passer directement par Groq
+  prefere?: "groq";                         // tâches courtes (corriger, prof) : Groq d'abord (2 s), Gemini en secours
 };
 const trop = () => new ErreurEleve("L'IA a mis trop de temps. Réessaie dans un moment, ou avec un cours plus court. Tes crédits sont rendus.");
 
@@ -110,6 +111,11 @@ const trop = () => new ErreurEleve("L'IA a mis trop de temps. Réessaie dans un 
 export async function appelIA(cle: string, p: Demande) {
   const groq = Deno.env.get("GROQ_API_KEY"), fin = Date.now() + 135_000;   // une Edge Function gratuite est coupée à 150 s
   if (p.forcer === "groq" && groq) return await appelGroq(groq, p, fin);
+  const relais = (e: unknown) => !(e instanceof ErreurEleve) || /très demandée|trop de temps/.test(e.message);   // panne ou saturation : l'autre IA essaie
+  if (p.prefere === "groq" && groq) {
+    try { return await appelGroq(groq, p, fin - 50_000); }
+    catch (e) { if (!relais(e)) throw e; console.warn("groq en échec, Gemini prend le relais :", (e as Error).message); return await appelGemini(cle, p, fin); }
+  }
   try {
     // S'il y a Groq, on garde 45 s pour lui au cas où Gemini ne répond pas.
     return await appelGemini(cle, p, groq ? fin - 45_000 : fin);
