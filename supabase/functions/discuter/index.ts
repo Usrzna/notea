@@ -1,10 +1,12 @@
-// Notéa : le prof particulier. La consigne vient du serveur (DC_BASE + DC_MODES), l'appli n'envoie que les notions et la discussion.
-// L'IA est Gemini. Rien n'est gardé.
+// Notéa : le prof particulier. La consigne vient du serveur (DC_BASE + DC_MODES + IA.PROF_METHODE).
+// L'appli envoie les notions (avec méthode conseillée et difficultés de l'élève) et la discussion.
+// L'IA est Gemini. v2.2 : il commence par ce qui bloque et change de méthode si l'élève ne comprend pas. Rien n'est gardé.
 import { appelIA, servir } from "../_shared/commun.ts";
 import { DC_BASE, DC_MODES } from "../_shared/consignes.ts";
+import { IA } from "../_shared/ia.ts";
 
 export const COUT = 1;               // crédit par réponse
-const CONTEXTE_MAX = 20_000, TOUR_MAX = 4_000, TOURS_MAX = 40, TOTAL_MAX = 40_000;
+const CONTEXTE_MAX = 30_000, TOUR_MAX = 4_000, TOURS_MAX = 40, TOTAL_MAX = 40_000;
 
 Deno.serve(servir({
   fonction: "discuter",
@@ -29,8 +31,8 @@ Deno.serve(servir({
       cout: COUT,
       faire: async (cle, model) => {
         const r = await appelIA(cle, {
-          model, maxTokens: 4000, messages,
-          system: DC_BASE + " " + DC_MODES[mode][1] + "\n\nLes notions du cours :\n" + contexte,
+          model, maxTokens: 4000, messages, reflexion: "low",
+          system: DC_BASE + " " + DC_MODES[mode][1] + "\n\n" + IA.PROF_METHODE + "\n\nLes notions du cours et les difficultés de l'élève :\n" + contexte,
         });
         return { corps: { text: r.text.trim() }, tIn: r.tIn, tOut: r.tOut, modele: r.modele };
       },

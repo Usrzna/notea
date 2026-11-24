@@ -17,3 +17,10 @@ export const DC_MODES: Record<string, [string, string]> = ${modes};
 `;
 fs.writeFileSync(path.join(racine, "supabase/functions/_shared/consignes.ts"), out);
 console.log("consignes.ts à jour (" + out.length + " caractères)");
+
+// v2.2 : les consignes de l'IA (js/ia-consignes.js) → supabase/functions/_shared/ia.ts
+const ia = fs.readFileSync(path.join(racine, "js/ia-consignes.js"), "utf8").replace(/\r\n/g, "\n");
+const iats = "// @ts-nocheck\n// Copié de js/ia-consignes.js par scripts/consignes.js. Ne pas modifier à la main.\n// deno-lint-ignore-file\n" +
+  ia.replace("var NOTEA_IA = (function () {", "// deno-lint-ignore no-explicit-any\nexport const IA: any = (function () {").replace(/\nif \(typeof module !== "undefined"\) module\.exports = NOTEA_IA;\n?/, "\n");
+fs.writeFileSync(path.join(racine, "supabase/functions/_shared/ia.ts"), iats);
+console.log("ia.ts à jour (" + iats.length + " caractères)");

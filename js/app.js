@@ -1241,13 +1241,15 @@ async function dcAsk() {
   } catch (e) { $("dc-status").textContent = "La réponse n'a pas pu venir : " + iaErreur(e); $("dc-send").disabled = false; return; }
   $("dc-status").textContent = ""; $("dc-send").disabled = false; $("dc-in").focus();
 }
-function dcStart() {
-  const m = $("dc-mat").value, ns = db.notions.filter(n => !m || matOf(n) === m).slice(0, 25);
+function dcStart(premier) {
+  // v2.2 : d'abord les notions qui posent problème (erreur récente pas encore corrigée), puis les plus importantes
+  const gene = n => (n.diags && n.diags.length && !n.diags[n.diags.length - 1].resolu ? 3 : 0) + (n.errs || 0) * 0.5 + (n.pert || 2) * 0.3;
+  const m = $("dc-mat").value, ns = db.notions.filter(n => !n.off && (!m || matOf(n) === m)).sort((a, b) => gene(b) - gene(a)).slice(0, 25);
   if (!ns.length) { note("Ajoute d'abord un cours dans « Mes cours ».", "warn"); return; }
   dc.turns = []; dc.notions = ns; $("dc-thread").replaceChildren(); $("dc-chat").hidden = false; $("dc-hard").hidden = true;
-  dc.ctx = ((m ? "Matière : " + m + "\n" : "") + ns.map(n => "- " + n.text).join("\n") + iaContexte(m) + moteurContexte(m)).slice(0, 20000);   // pour le serveur (il refuse au-delà)
-  dc.sys = DC_BASE + " " + DC_MODES[dc.mode][1] + "\n\nLes notions du cours" + (m ? " de " + m : "") + " :\n" + ns.map(n => "- " + n.text).join("\n") + iaContexte(m) + moteurContexte(m);
-  const first = dc.mode === "enf" ? "Bonjour ! Je suis prêt à t'expliquer mon cours." : dc.mode === "qst" ? "Pose-moi la première question." : "Explique-moi la première notion.";
+  dc.ctx = ((m ? "Matière : " + m + "\n" : "") + ns.map(n => "- " + n.text).join("\n") + iaContexte(m) + moteurContexte(m)).slice(0, 30000);   // pour le serveur (il refuse au-delà)
+  dc.sys = DC_BASE + " " + DC_MODES[dc.mode][1] + "\n\n" + (C_IA.PROF_METHODE || "") + "\n\nLes notions du cours" + (m ? " de " + m : "") + " :\n" + ns.map(n => "- " + n.text).join("\n") + iaContexte(m) + moteurContexte(m);
+  const first = typeof premier === "string" ? premier : dc.mode === "enf" ? "Bonjour ! Je suis prêt à t'expliquer mon cours." : dc.mode === "qst" ? "Pose-moi la première question." : "Explique-moi la première notion.";
   dc.turns.push({role: "user", content: first}); bubble2("user", first); dcAsk(); useTool("discu");
 }
 /* Mots difficiles : en mode « enfant », on signale les mots longs recopiés du cours sans être expliqués */
@@ -1617,7 +1619,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "2.3.1";
+const VERSION = "2.4";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -2011,7 +2013,7 @@ function makeQ(x, t, k) {
    d'abord celles jamais vues en quiz, puis celles ratées, puis les plus anciennes. Les formes de questions changent. */
 function cqBuild(items, nb) {
   const k = db.niv === 1 ? 2 : db.niv === 3 ? 4 : 3;
-  const pr = x => { const z = x.qz || {n: 0, ok: 0, last: 0}; return (z.n === 0 ? 0 : 2e13) + (z.n > z.ok ? 0 : 1e13) + z.last + Math.random() * 1e5 - (x.mq ? (x.mq.pertinence || 0) * 5e4 : 0); };
+  const pr = x => { const z = x.qz || {n: 0, ok: 0, last: 0}; return (z.n === 0 ? 0 : 2e13) + (z.n > z.ok ? 0 : 1e13) + z.last + Math.random() * 1e5 - (x.mq ? (x.mq.pertinence || 0) * 5e4 : 0) - (x.iq && iaVise(x) ? 2.5e13 : 0) - (x.iq && x.n ? (x.n.pert || 2) * 1e4 : 0); };   // v2.2 : d'abord ce qui vise la cause de la dernière erreur
   const by = new Map(); items.slice().sort((a, b) => pr(a) - pr(b)).forEach(x => { const c = chapOf(x); if (!by.has(c)) by.set(c, []); by.get(c).push(x); });
   const cols = [...by.values()], order = []; for (let i = 0; order.length < items.length; i++) cols.forEach(c => { if (c[i]) order.push(c[i]); });
   const out = [], cnt = {}, seenG = new Set(), famN = {}, later = [], cap = Math.max(2, Math.ceil(nb / 4)); let last = "";
@@ -2044,6 +2046,7 @@ function cqShow() {
   $("qc-prog").style.width = Math.round(cq.i / cq.list.length * 100) + "%";
   const tg = $("qc-tag"); tg.replaceChildren(el("span", "chip q", q.tag), document.createTextNode([matOf(q.x), chapOf(q.x)].filter(Boolean).join(" · ")));
   $("qc-q").textContent = q.text; $("qc-quote").hidden = !q.quote; $("qc-quote").textContent = q.quote ? "« " + q.quote + " »" : "";
+  if (q.ouverte) { cqOuverteShow(q); return; }   // v2.2 : réponse écrite, corrigée par l'IA
   q.choices = shuffle([{a: q.good, good: true}, ...q.opts]);
   const box = $("qc-c"); box.replaceChildren();
   q.choices.forEach((c, i) => { const b = el("button"); b.append(el("span", "lt", "ABCDE"[i]), el("span", "", c.a)); b.setAttribute("aria-label", "Réponse " + "ABCDE"[i] + " : " + c.a);
@@ -2058,6 +2061,7 @@ function cqAnswer(i) {
   if (x.text && x.holes && (!x.last || x.due <= now)) { if (!x.last) db.newToday++; schedule(x, good ? 2 : 1, now); }
   if (x.text && COMP_T.has(q.t === "moteur" ? "moteur" : q.t)) { x.cp = x.cp || {n: 0, ok: 0}; x.cp.n++; if (good) x.cp.ok++; x.cp.last = now; }   // la compréhension se mesure à part
   if (x.text) suivre(x, q.t, good ? 1 : 0, {choix: good ? null : c.a, now});
+  if (x.iq) iaSuivre(x, good ? 1 : 0, {confusion: good ? null : c.a, cause: good ? "aucune" : "confusion"});   // v2.2 : la notion de l'IA suit la réponse
   save(); if (onceToday("cq" + (x.id || q.text))) gainN(1, "quiz");
   cqBack(q, c, good); $("qc-turn").hidden = false;
   setTimeout(() => { flipTo("qc-flip", true); $("qc-next").focus(); }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 350);
@@ -2086,11 +2090,65 @@ function cqBack(q, c, good) {
   const s = [matOf(x), chapOf(x)].filter(Boolean).join(" · "); if (s) w.append(el("div", "src", s));
   $("qc-next").textContent = cq.i + 1 < cq.list.length ? "Question suivante →" : "Voir mon score";
 }
+/* v2.2 : une question à réponse écrite (courte ou développée). L'élève écrit ou dicte ; l'IA corrige et dit la cause. */
+function cqOuverteShow(q) {
+  const iq = q.x.iq, box = $("qc-c"), dev = iq.format === "developpee"; box.replaceChildren();
+  const ta = el("textarea"); ta.id = "qc-rep"; ta.rows = dev ? 6 : 2; ta.placeholder = dev ? "Réponds avec tes mots, en quelques phrases. L'orthographe ne compte pas." : "Ta réponse, avec tes mots. L'orthographe ne compte pas.";
+  ta.setAttribute("aria-label", "Ta réponse"); ta.style.width = "100%";
+  const r = el("div", "row"), ok = el("button", "primary", "Valider ma réponse"), nsp = el("button", "", "Je ne sais pas"), ind = el("button", "", "💡 Un indice");
+  const st = el("p", "muted"); st.setAttribute("role", "status");
+  ok.addEventListener("click", () => cqOuverteRep(q, ta.value.trim(), st, [ok, nsp, ind]));
+  nsp.addEventListener("click", () => cqOuverteRep(q, "", st, [ok, nsp, ind]));
+  ind.addEventListener("click", () => { q.aide = true; st.textContent = "Indice : " + (iq.indice || "pense à ce qu'il faut retenir sur cette notion."); ind.disabled = true; });
+  ta.addEventListener("keydown", e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) ok.click(); });
+  r.append(ok, nsp); if (iq.indice) r.append(ind);
+  box.append(ta, r, st); ta.focus();
+}
+async function cqOuverteRep(q, v, st, btns) {
+  if (cq.answered) return; cq.answered = true; btns.forEach(b => b.disabled = true);
+  const x = q.x, now = Date.now(); st.textContent = "Notéa lit ta réponse…";
+  let corr;
+  try { corr = await iaCorriger(x, v); }
+  catch (e) { cq.answered = false; btns.forEach(b => b.disabled = false); st.textContent = iaErreur(e); return; }
+  const good = corr.verdict === "juste";
+  if (good) cq.ok++; else if (!cq.miss.includes(x)) cq.miss.push(x);
+  x.qz = x.qz || {n: 0, ok: 0, last: 0}; x.qz.n++; if (good) x.qz.ok++; x.qz.last = now;
+  iaSuivre(x, corr.score, {cause: corr.cause, confusion: corr.confusion_avec, methode: corr.prochaine_methode, aide: !!q.aide});
+  save(); if (onceToday("cq" + (x.id || q.text))) gainN(1, "quiz");
+  cqBackOuverte(q, corr, v); $("qc-turn").hidden = false;
+  setTimeout(() => { flipTo("qc-flip", true); $("qc-next").focus(); }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 350);
+}
+function cqBackOuverte(q, corr, v) {
+  const bk = $("qc-back"), x = q.x, iq = x.iq, n = x.n, good = corr.verdict === "juste", moy = corr.verdict === "partiel";
+  bk.classList.toggle("ok", good); bk.classList.toggle("no", !good && !moy);
+  $("qc-verdict").textContent = good ? "✓ C'est juste !" : moy ? "≈ En partie juste" : "✗ Pas encore";
+  const line = (lab, txt, cls) => { const d = el("div", "ansline " + cls); d.append(el("small", "", lab), el("b", "", txt)); return d; };
+  const box = $("qc-ans"); box.replaceChildren(line("Ta réponse", v || "(pas de réponse)", "mine"), line("Une bonne réponse", iq.reponse_attendue, "good"));
+  const w = $("qc-why"); w.replaceChildren(el("b", "", "Ce que Notéa a vu")); const p = t => w.append(el("div", "", t));
+  if (corr.retour) p(corr.retour);
+  const cause = (C_IA.NOMS_CAUSE || {})[corr.cause]; if (cause) p("D'où vient l'erreur : " + cause + (corr.confusion_avec ? " (avec « " + corr.confusion_avec + " »)" : "") + ".");
+  if ((corr.points_trouves || []).length) p("✓ " + corr.points_trouves.join(" · "));
+  if ((corr.points_manquants || []).length) p("À ajouter : " + corr.points_manquants.join(" · "));
+  if (!good && n && n.ia) {
+    const meth = corr.prochaine_methode && corr.prochaine_methode !== n.ia.methode ? corr.prochaine_methode : n.ia.methode;
+    p(((C_IA.NOMS_METHODE || {})[meth] || "Pour l'apprendre") + " : " + (meth === n.ia.methode ? n.ia.aide : n.ia.explication || n.ia.aide));
+    if (corr.cause === "confusion" && n.ia.confusions.length) p("Ne pas confondre : " + n.ia.confusions[0]);
+    const b = el("button", "", "💬 Demander au prof d'expliquer autrement"); b.addEventListener("click", () => profSurNotion(n, corr)); w.append(b);
+  }
+  const s = [matOf(x), chapOf(x)].filter(Boolean).join(" · "); if (s) w.append(el("div", "src", s));
+  $("qc-next").textContent = cq.i + 1 < cq.list.length ? "Question suivante →" : "Voir mon score";
+}
+/* Ouvrir le prof particulier sur une notion qui pose problème, avec la cause de l'erreur. */
+function profSurNotion(n, corr) {
+  tab("discu"); const m = matOf(n); if ([...$("dc-mat").options].some(o => o.value === m)) $("dc-mat").value = m;
+  dc.mode = "exp"; document.querySelectorAll("#dc-mode button").forEach(x => x.classList.toggle("on", x.dataset.m === "exp")); dcHelp();
+  dcStart(`Je n'ai pas compris « ${n.ia ? n.ia.terme : n.text} »` + (corr && corr.cause && corr.cause !== "aucune" ? ` (${((C_IA.NOMS_CAUSE || {})[corr.cause] || "").toLowerCase()})` : "") + ". Explique-le-moi autrement.");
+}
 function cqEnd() {
   $("qc").hidden = true; $("jx-end").hidden = false; const n = cq.list.length;
   $("jx-end-t").textContent = `${cq.ok} sur ${n}`;
   $("jx-end-s").textContent = cq.ok === n ? "Parfait ! Tout est juste." : "Les notions ratées reviennent plus tôt dans ta révision. Tu peux aussi les revoir tout de suite.";
-  const l = $("jx-end-l"); l.replaceChildren(); cq.miss.forEach(x => { const r = el("div", "res no"); if (x.holes) r.append("✗ ", holeHTML(x, true)); else r.append("✗ " + (x.q || x.front || (x.mq && x.mq.enonce) || (x.iq && x.iq.question)) + " → " + (x.a || x.back || (x.mq && x.mq.reponseAttendue) || (x.iq && (x.iq.choix.find(c => c.juste) || {}).texte))); l.append(r); });
+  const l = $("jx-end-l"); l.replaceChildren(); cq.miss.forEach(x => { const r = el("div", "res no"); if (x.holes) r.append("✗ ", holeHTML(x, true)); else r.append("✗ " + (x.q || x.front || (x.mq && x.mq.enonce) || (x.iq && x.iq.question)) + " → " + (x.a || x.back || (x.mq && x.mq.reponseAttendue) || (x.iq && (x.iq.format && x.iq.format !== "qcm" ? x.iq.reponse_attendue : ((x.iq.choix || []).find(c => c.juste) || {}).texte)))); l.append(r); });
   $("jx-miss").hidden = !cq.miss.length; $("jx-miss").textContent = `Revoir mes erreurs (${cq.miss.length})`;
   if (onceToday("jeu-quiz")) gainN(5, "quiz"); renderToday();
 }
@@ -2319,11 +2377,20 @@ function moteurNote(mq, score, err) {
   try { NoteaMoteur.enregistrer(p, {notion: mq.notions[0], activite: mq.type, score, erreur: err || undefined}); } catch (e) {}
 }
 /* Les questions du moteur, avec la matière et le chapitre de leur cours. */
+/* v2.4 : la fiche de compréhension faite par l'IA à l'import (une seule fois). Chaque outil y pioche, sans rappeler l'IA. */
+function ficheIA(coursId) { const a = db.ia && db.ia[coursId]; return a && a.v === 2 && (a.data.questions || []).length ? a : null; }
+/* v2.4 : la réponse se lit-elle déjà dans l'énoncé ? (les mots importants de la réponse sont presque tous dans la question) */
+function fuite(enonce, reponse) {
+  const mots = t => [...new Set(norm(String(t || "")).split(/[^a-z0-9]+/).filter(w => w.length >= 4 && !STOP.has(w)).map(stem))];
+  const r = mots(reponse), e = new Set(mots(enonce)); if (!r.length) return false;
+  if (r.length === 1) return e.has(r[0]) && String(reponse).trim().split(/\s+/).length <= 3;
+  return r.filter(w => e.has(w)).length / r.length >= 0.7;
+}
 function moteurBanque(m, ch) {
-  const out = []; (db.cours || []).forEach(c => { const a = db.moteur && db.moteur[c.id]; if (!a || !a.questions) return;
+  const out = []; (db.cours || []).forEach(c => { const a = db.moteur && db.moteur[c.id]; if (!a || !a.questions || ficheIA(c.id)) return;   // v2.4 : cours compris par l'IA → sa fiche remplace le moteur local
     const mat = c.mat || a.matiere || "Cours", chap = c.chap || a.chapitre || "";
     if ((m && mat !== m) || (ch && chap !== ch)) return;
-    a.questions.forEach(q => { q.mat = mat; q.chap = chap; q.cid = c.id; out.push(q); }); });
+    a.questions.forEach(q => { if (fuite(q.enonce, q.reponseAttendue)) return; q.mat = mat; q.chap = chap; q.cid = c.id; out.push(q); }); });   // v2.4 : pas de question qui donne sa réponse
   return out;
 }
 function moteurNoeud(cid, id) { const a = db.moteur && db.moteur[cid]; return a && a.noeuds ? a.noeuds.find(n => n.id === id) : null; }
@@ -2352,7 +2419,7 @@ function makeMQ(x, k) {
   return q.opts.length >= 2 ? q : null;
 }
 function famKey(q) {
-  const t = q.t === "moteur" ? q.x.mq.type : q.t === "ia" ? "ia-" + q.x.iq.objectif + "-" + nk(q.x.iq.partie || "") : q.t;
+  const t = q.t === "moteur" ? q.x.mq.type : q.t === "ia" ? "ia-" + (q.x.iq.type || q.x.iq.objectif) + "-" + nk(q.x.iq.notion || q.x.iq.partie || "") : q.t;
   const f = {def: "D", qcm: "D", term: "T", directe: "T", "qcm-notion": "T", ex: "E", situation: "E"}[t] || t;
   return f + "|" + nk(q.good);
 }
@@ -2612,7 +2679,7 @@ async function iaCall({system, messages, maxTokens, format, effort, onText, serv
   if (iaVoie() === "compte") {   // v1.8 : l'élève connecté passe par le serveur de Notéa, sans clé
     if (!serveur) throw new Error("Cette fonction n'existe pas encore avec un compte Notéa.");
     const j = await iaServeur(serveur.fn, serveur.body);
-    return {text: j.text || "", usage: null, model: j.modele, cout: j.cout, credits: j.credits};
+    return {text: j.text || "", correction: j.correction, usage: null, model: j.modele, cout: j.cout, credits: j.credits};
   }
   const client = await iaClient(), model = iaModel();
   const req = {model, max_tokens: maxTokens, system, messages, output_config: Object.assign({effort}, format ? {format} : {})};
@@ -2662,18 +2729,97 @@ function iaSources() {
   return out;
 }
 function iaEstimation(text) { const inTok = Math.round(text.length / 3.5) + 1400, outTok = Math.min(16000, 2500 + Math.round(text.length / 6)); return {inTok, outTok, prix: iaPrix(iaModel(), inTok, outTok)}; }
-async function iaAnalyser(src, onProgress) {
-  const t0 = Date.now(); let n = 0;
-  const r = await iaCall({serveur: {fn: "comprendre", body: {mat: src.mat, texte: src.text}}, system: IA_SYSTEME, maxTokens: 32000, effort: "medium", format: {type: "json_schema", schema: IA_SCHEMA},
-    messages: [{role: "user", content: `Matière : ${src.mat}\n\nVoici mes notes de cours :\n<cours>\n${src.text}\n</cours>`}],
-    onText: d => { n += d.length; if (onProgress) onProgress(Math.round((Date.now() - t0) / 1000), n); }});
-  let data; try { data = JSON.parse(r.text); } catch (e) { throw new Error("La réponse de l'IA est incomplète. Réessaie."); }
-  data.questions = (data.questions || []).filter(q => q.choix && q.choix.length >= 3 && q.choix.filter(c => c.juste).length === 1)
+/* =====================================================================
+   Version 2.2 : le cerveau pédagogique (voir docs/AUDIT-IA.md).
+   1. Comprendre le cours (notions, attendus, méthodes, confusions…), 2. écrire les questions À PARTIR de cette
+   compréhension, 3. corriger les réponses écrites en disant la cause de l'erreur. Les consignes sont dans js/ia-consignes.js.
+   Les notions de l'IA deviennent les notions de l'appli : FSRS, 5 dimensions et prérequis marchent dessus.
+   ===================================================================== */
+var C_IA = window.NOTEA_IA || {};
+var IA_PERT = {essentielle: 3, importante: 2, secondaire: 1};
+var IA_SUIVI = {definition: "def", memorisation: "rappel", comprehension: "ia", explication: "explique", raisonnement: "ouverte", application: "situation", comparaison: "affirm", restitution: "examen", exercice: "exo"};
+var IA_ATTENDU = {memoriser: "À mémoriser", expliquer: "À expliquer", raisonner: "À raisonner", appliquer: "À appliquer"};
+/* Ce qu'il faut travailler après telle cause d'erreur : les types de questions qui la visent. */
+var IA_VISE = {confusion: ["comparaison"], incomprehension: ["explication", "comprehension"], oubli: ["memorisation", "definition"], absence: ["definition", "comprehension"],
+  raisonnement: ["raisonnement", "explication"], incomplet: ["restitution", "explication"], application: ["application", "exercice"]};
+function iaJSON(text, champ) {
+  let d; try { d = JSON.parse(text); } catch (e) { throw new Error("La réponse de l'IA est incomplète. Réessaie."); }
+  if (!d || !Array.isArray(d[champ])) throw new Error("La réponse de l'IA est incomplète. Réessaie.");
+  return d;
+}
+const iaCoursMsg = src => `Matière : ${src.mat || "Cours"}\n\n<cours>\n${src.text}\n</cours>`;
+/* Étape 1 : comprendre le cours. */
+async function iaComprendreCours(src) {
+  const r = await iaCall({serveur: {fn: "comprendre", body: {etape: "analyse", mat: src.mat, texte: src.text}}, system: C_IA.ANALYSE_SYSTEME, maxTokens: 32000, effort: "medium",
+    format: {type: "json_schema", schema: C_IA.ANALYSE_SCHEMA}, messages: [{role: "user", content: iaCoursMsg(src) + "\n\nAnalyse ce cours en suivant la procédure."}]});
+  return {d: iaJSON(r.text, "notions"), r};
+}
+/* Étape 2 : les questions, écrites à partir de l'analyse (pas des phrases du cours). */
+async function iaQuestionsCours(src, analyse) {
+  const ana = JSON.stringify(Object.assign({}, analyse, {questions: undefined}));
+  const r = await iaCall({serveur: {fn: "comprendre", body: {etape: "questions", mat: src.mat, texte: src.text, analyse: ana}}, system: C_IA.QUESTIONS_SYSTEME, maxTokens: 32000, effort: "medium",
+    format: {type: "json_schema", schema: C_IA.QUESTIONS_SCHEMA}, messages: [{role: "user", content: `L'analyse du cours :\n<analyse>\n${ana}\n</analyse>\n\n${iaCoursMsg(src)}\n\nÉcris les questions d'entraînement.`}]});
+  const qs = iaJSON(r.text, "questions").questions.filter(q => q.question && (q.format === "qcm" ? (q.choix || []).length >= 3 && q.choix.filter(c => c.juste).length === 1 : !!q.reponse_attendue))
     .map(q => Object.assign(q, {id: "ia" + uid()}));
-  const u = r.usage || {}, prix = r.cout ? 0 : iaPrix(iaModel(), (u.input_tokens || 0) + (u.cache_read_input_tokens || 0), u.output_tokens || 0);
-  db.ia[src.key] = Object.assign({mat: src.mat, label: src.label, date: Date.now(), model: r.model, prix, data}, r.cout ? {cout: r.cout} : {});
-  iaRanger(src.mat, data); save();
-  return db.ia[src.key];
+  return {qs, r};
+}
+/* L'IA gratuite est parfois saturée : on attend un peu et on réessaie tout seul (2 fois), au lieu de laisser l'élève refaire. */
+async function iaEssayer(f, etat, quoi) {
+  for (let i = 0; ; i++) {
+    try { return await f(); }
+    catch (e) {
+      const sature = /très demandée|trop de temps|surchargée|Trop de demandes/i.test((e && e.message) || "");
+      if (!sature || i >= 2) throw e;
+      for (let s = i ? 40 : 20; s > 0; s--) { etat(`L'IA est très demandée. Notéa réessaie dans ${s} s… (${quoi})`); await new Promise(r => setTimeout(r, 1000)); }
+    }
+  }
+}
+const iaPrixDe = r => { const u = r.usage || {}; return r.cout ? 0 : iaPrix(iaModel(), (u.input_tokens || 0) + (u.cache_read_input_tokens || 0), u.output_tokens || 0); };
+/* L'analyse complète d'un cours. etat(texte) : pour dire où on en est. Si les questions échouent, l'analyse est gardée. */
+async function iaAnalyser(src, etat) {
+  etat = etat || (() => {});
+  const old = db.ia[src.key];
+  let a = old && old.v === 2 && !(old.data.questions || []).length && old.texteLong === src.text.length ? old : null;   // les questions avaient échoué : on reprend à l'étape 2
+  if (!a) {
+    etat("Notéa lit et comprend ton cours…");
+    const {d, r} = await iaEssayer(() => { etat("Notéa lit et comprend ton cours…"); return iaComprendreCours(src); }, etat, "compréhension du cours");
+    a = {v: 2, mat: src.mat, label: src.label, date: Date.now(), model: r.model, prix: iaPrixDe(r), cout: r.cout || 0, texteLong: src.text.length, data: Object.assign(d, {questions: []})};
+    db.ia[src.key] = a; iaVersNotions(src, a); save();
+  }
+  etat("Notéa prépare tes questions…");
+  const {qs, r} = await iaEssayer(() => { etat("Notéa prépare tes questions…"); return iaQuestionsCours(src, a.data); }, etat, "questions");
+  a.data.questions = qs; a.prix = (a.prix || 0) + iaPrixDe(r); a.cout = (a.cout || 0) + (r.cout || 0); a.model = r.model || a.model;
+  iaLierQuestions(src.key, a); save();
+  return a;
+}
+/* Les notions de l'IA deviennent des notions de l'appli (et remplacent les notions « phrase » du cours pas encore travaillées). */
+function iaVersNotions(src, a) {
+  const d = a.data, deja = db.notions.filter(n => n.ia && n.ia.key === src.key), parId = new Map(), t0 = Date.now(), srcTxt = src.mat + " · " + new Date().toLocaleDateString("fr-FR");
+  (d.notions || []).forEach((x, i) => {
+    if (!x.terme || !x.a_retenir) return;
+    // v2.4 : si « à retenir » dit déjà le mot, pas de « mot : » devant (sinon le mot est répété et la réponse se voit)
+    const dejaDit = nk(x.a_retenir).includes(nk(x.terme));
+    const text = (dejaDit ? x.a_retenir : x.terme + " : " + x.a_retenir).replace(/\s+/g, " ").trim();
+    let n = deja.find(e => nk(e.ia.terme) === nk(x.terme));
+    if (!n) { n = makeNotion(text, x.importance === "essentielle" ? "imp" : "manuel", srcTxt); n.created = t0 + i; db.notions.push(n); }
+    else n.text = text;
+    const h = holesAt(text, x.terme); n.holes = h.length ? h : n.holes;
+    Object.assign(n, {mat: src.mat, chap: x.partie || n.chap || "", pert: IA_PERT[x.importance] || 2, rang: i, kind: x.attendu === "memoriser" ? "def" : "concept", auto: true,
+      ia: {key: src.key, id: x.id, terme: x.terme, retenir: x.a_retenir, attendu: x.attendu, methode: x.methode, aide: x.aide, explication: x.explication,
+        confusions: (x.confusions || []).map(c => c.avec + " : " + c.difference), erreurs: x.erreurs_frequentes || [], source: x.source || "", hors: !!x.ajout_hors_notes}});
+    if (x.exemple) n.ex = x.exemple;
+    if (n.off && !n.offPar) delete n.off;
+    parId.set(x.id, n);
+  });
+  (d.notions || []).forEach(x => { const n = parId.get(x.id); if (!n) return; const pre = (x.prerequis || []).map(id => parId.get(id)).filter(p => p && p !== n).map(p => p.id); if (pre.length) n.pre = pre; else delete n.pre; });
+  // Les notions « phrase » de ce cours, jamais travaillées, laissent la place : l'IA a compris le cours.
+  if (parId.size >= 2) db.notions.filter(n => n.auto && !n.ia && n.cid === src.key && !n.last && !n.dims).forEach(n => { n.off = true; n.offPar = "ia"; });
+  iaRanger(src.mat, d);
+}
+/* Chaque question connaît la notion de l'appli qu'elle travaille. */
+function iaLierQuestions(key, a) {
+  const parId = new Map(db.notions.filter(n => n.ia && n.ia.key === key).map(n => [n.ia.id, n]));
+  (a.data.questions || []).forEach(q => { const n = parId.get(q.notion); if (n) q.nid = n.id; });
 }
 /* Les notions sans chapitre prennent la partie du plan qui parle d'elles. */
 function iaRanger(m, data) {
@@ -2683,22 +2829,53 @@ function iaAnalyses(m) { return Object.values(db.ia || {}).filter(a => !m || a.m
 
 /* ---------- Le Quiz : les questions de l'IA remplacent les questions automatiques de la matière ---------- */
 function iaItems(m, ch) {
-  const out = []; iaAnalyses(m).forEach(a => (a.data.questions || []).forEach(q => {
-    if (ch && q.partie !== ch) return; out.push({iq: q, ia: a, id: q.id, mat: a.mat, chap: q.partie, kind: "def", qz: q.qz || (q.qz = {n: 0, ok: 0, last: 0})}); }));
+  const out = [], parId = new Map(db.notions.map(n => [n.id, n])), ouvertes = !!iaVoie();   // les réponses écrites demandent l'IA pour être corrigées
+  Object.entries(db.ia || {}).forEach(([key, a]) => { if (m && a.mat !== m) return; (a.data.questions || []).forEach(q => {
+    if (ch && q.partie !== ch) return; if (q.format && q.format !== "qcm" && !ouvertes) return;
+    const n = q.nid ? parId.get(q.nid) : null; if (n && n.off) return;
+    out.push({iq: q, ia: a, key, n, id: q.id, mat: a.mat, chap: q.partie, kind: "def", qz: q.qz || (q.qz = {n: 0, ok: 0, last: 0})}); }); });
   return out;
+}
+/* Après une erreur, les questions qui visent sa cause passent en premier (confusion → comparaison, oubli → mémoire…). */
+function iaVise(x) {
+  const d = x.n && x.n.diags && x.n.diags[x.n.diags.length - 1];
+  return !!(d && d.cause && IA_VISE[d.cause] && IA_VISE[d.cause].includes(x.iq.type));
 }
 var IA_OBJ = {comprendre: "Comprendre", appliquer: "Mise en situation", distinguer: "Ne pas confondre", retenir: "À retenir"};
 function makeIA(x, k) {
-  const iq = x.iq, juste = iq.choix.find(c => c.juste), faux = shuffle(iq.choix.filter(c => !c.juste));
-  return {t: "ia", x, quote: "", tag: IA_OBJ[iq.objectif] || "Comprendre", text: iq.question, good: juste.texte,
+  const iq = x.iq, tag = (C_IA.NOMS_TYPE || {})[iq.type] || IA_OBJ[iq.objectif] || "Comprendre";
+  if (iq.format && iq.format !== "qcm") return {t: "ia", x, quote: "", tag, text: iq.question, ouverte: true, good: iq.reponse_attendue, opts: []};
+  const juste = iq.choix.find(c => c.juste), faux = shuffle(iq.choix.filter(c => !c.juste));
+  return {t: "ia", x, quote: "", tag, text: iq.question, good: juste.texte,
     opts: faux.slice(0, db.niv === 1 ? 2 : faux.length).map(c => ({a: c.texte, why: c.pourquoi})), juste};
 }
 function iaPourquoi(q, c, good, p) {
-  const iq = q.x.iq;
+  const iq = q.x.iq, n = q.x.n;
   if (!good && c.why) p("Ce que tu as choisi : " + c.why);
   if (q.juste && q.juste.pourquoi) p("La bonne réponse : " + q.juste.pourquoi);
   if (iq.explication) p("À retenir : " + iq.explication);
-  const n = (q.x.ia.data.notions || []).find(z => z.terme === iq.notion); if (n && n.exemple) p("Exemple : " + n.exemple);
+  if (n && n.ia) { if (!good && n.ia.confusions.length) p("Ne pas confondre : " + n.ia.confusions[0]); if (n.ia.aide) p(((C_IA.NOMS_METHODE || {})[n.ia.methode] || "Pour l'apprendre") + " : " + n.ia.aide); }
+  else { const z = (q.x.ia.data.notions || []).find(y => y.terme === iq.notion); if (z && z.exemple) p("Exemple : " + z.exemple); }
+}
+/* Enregistrer une réponse à une question de l'IA dans la notion de l'appli : FSRS, 5 dimensions, et la cause de l'erreur. */
+function iaSuivre(x, score, o) {
+  const n = x.n, now = Date.now(); if (!n) return;
+  if (!n.last || n.due <= now) { if (!n.last) db.newToday++; schedule(n, score >= 0.8 ? 3 : score >= 0.5 ? 2 : 1, now); }
+  suivre(n, IA_SUIVI[x.iq.type] || "ia", score >= 0.8 ? 1 : score >= 0.5 ? 0.6 : 0, {choix: o.confusion || null, aide: !!o.aide, now});
+  if (o.cause && o.cause !== "aucune") { n.diags = (n.diags || []).concat({cause: o.cause, le: now, avec: o.confusion || "", methode: o.methode || ""}).slice(-6); }
+  else if (score >= 0.8 && n.diags && n.diags.length) n.diags[n.diags.length - 1].resolu = now;
+}
+/* Corriger une réponse écrite avec l'IA. */
+async function iaCorriger(x, reponse) {
+  const iq = x.iq, n = x.n;
+  const demande = {question: iq.question, type: iq.type, format: iq.format, reponse_attendue: iq.reponse_attendue, points_cles: iq.points_cles || [],
+    notion: {terme: n && n.ia ? n.ia.terme : iq.notion, a_retenir: n ? n.text : "", confusions: n && n.ia ? n.ia.confusions : [], erreurs_frequentes: n && n.ia ? n.ia.erreurs : []},
+    deja_reussie: !!(x.qz && x.qz.ok) || !!(n && n.dims && Object.values(n.dims).some(d => d.s >= 0.8)), reponse};
+  const r = await iaCall({serveur: {fn: "corriger", body: demande}, system: C_IA.CORRIGER_SYSTEME, maxTokens: 3000, effort: "low",
+    format: {type: "json_schema", schema: C_IA.CORRIGER_SCHEMA}, messages: [{role: "user", content: JSON.stringify(Object.assign({}, demande, {reponse_etudiant: reponse || "(vide)"}))}]});
+  if (r.correction) return r.correction;
+  let d; try { d = JSON.parse(r.text); } catch (e) { throw new Error("La correction n'a pas marché. Réessaie."); }
+  d.score = Math.max(0, Math.min(1, Number(d.score) || 0)); return d;
 }
 
 /* ---------- Comprendre mon cours : le plan, les notions expliquées ---------- */
@@ -2708,6 +2885,7 @@ function renderComprendre() {
   if (!srcs.length) { $("cp-vide").hidden = false; $("cp-card").hidden = true; $("cp-res").replaceChildren(); return; }
   $("cp-vide").hidden = true; $("cp-card").hidden = false;
   if (!cpSel || !srcs.some(x => x.key === cpSel)) cpSel = (srcs.find(x => db.ia[x.key]) || srcs[0]).key; s.value = cpSel;
+  if (iaEnCours) { $("cp-go").disabled = true; return; }   // une analyse tourne : on ne touche ni au bouton ni au message
   const src = srcs.find(x => x.key === cpSel), a = db.ia[cpSel], est = iaEstimation(src.text), voie = iaVoie();
   const p = compte && compte.profil, bloque = voie === "compte" && p && !p.consentement_le;
   $("cp-go").textContent = a ? "Refaire l'analyse" : "✨ Comprendre ce cours avec l'IA";
@@ -2721,8 +2899,17 @@ function renderComprendre() {
 }
 function renderIA(a) {
   const d = a.data, box = el("div", "stack"), notions = d.notions || [];
-  const top = el("div", "card hero-soft"); top.append(el("h2", "", d.titre || a.mat), el("p", "", d.resume || ""));
-  const b = el("button", "", "🔊 Écouter le résumé"); b.addEventListener("click", () => speak((d.titre || "") + ". " + (d.resume || ""))); top.append(b); box.append(top);
+  const top = el("div", "card hero-soft"); top.append(el("h2", "", d.titre || a.mat));
+  if (d.objectif) top.append(el("p", "", "🎯 Le but : " + d.objectif));
+  top.append(el("p", "", d.resume || ""));
+  const tr = el("div", "row"), b = el("button", "", "🔊 Écouter le résumé"); b.addEventListener("click", () => speak((d.titre || "") + ". " + (d.objectif || "") + " " + (d.resume || ""))); tr.append(b);
+  if ((d.questions || []).length) { const go = el("button", "primary", `▶ M'entraîner sur ce cours (${d.questions.length} questions)`); go.addEventListener("click", () => { tab("jeux"); $("jx-mat").value = a.mat; fillChapSel($("jx-chap"), a.mat); $("jx-chap").value = ""; cqStart(); }); tr.append(go); }
+  top.append(tr); box.append(top);
+  if (a.v === 2) {
+    const ess = notions.filter(n => n.importance === "essentielle");
+    if (ess.length) { const c = el("div", "card"); c.append(el("h3", "", "⭐ L'essentiel à maîtriser")); const ul = el("ul"); ess.forEach(n => ul.append(el("li", "", n.terme + " : " + n.a_retenir))); c.append(ul); box.append(c); }
+    if ((d.a_ne_pas_apprendre || []).length) { const c = el("details", "card"); const s = document.createElement("summary"); s.append(el("b", "", "🙅 Pas besoin d'apprendre par cœur")); c.append(s); const ul = el("ul"); d.a_ne_pas_apprendre.forEach(t => ul.append(el("li", "", t))); c.append(ul); box.append(c); }
+  }
   const parties = []; (d.plan || []).forEach(p => { parties.push([p, 1]); (p.sous_parties || []).forEach(sp => parties.push([sp, 2])); });
   const vus = new Set();
   parties.forEach(([p, lv]) => {
@@ -2731,7 +2918,7 @@ function renderIA(a) {
     s.append(el("b", "", p.titre), el("span", "muted", ns.length ? ns.length + " notion" + (ns.length > 1 ? "s" : "") : "")); c.append(s, el("p", "idee", p.idee || ""));
     ns.forEach(n => c.append(notionIA(n)));
     const nq = (d.questions || []).filter(q => q.partie === p.titre).length;
-    const r = el("div", "row"), l = el("button", "", "🔊 Écouter cette partie"); l.addEventListener("click", () => speak(p.titre + ". " + (p.idee || "") + " " + ns.map(n => n.terme + " : " + n.definition + ". " + n.explication).join(" ")));
+    const r = el("div", "row"), l = el("button", "", "🔊 Écouter cette partie"); l.addEventListener("click", () => speak(p.titre + ". " + (p.idee || "") + " " + ns.map(n => n.terme + " : " + (n.a_retenir || n.definition) + ". " + n.explication).join(" ")));
     r.append(l); if (nq) { const qb = el("button", "primary", `Quiz sur cette partie (${nq})`); qb.addEventListener("click", () => { tab("jeux"); $("jx-mat").value = a.mat; fillChapSel($("jx-chap"), a.mat); $("jx-chap").value = p.titre; cqStart(); }); r.append(qb); }
     c.append(r); box.append(c); });
   const reste = notions.filter(n => !vus.has(n)); if (reste.length) { const c = el("details", "chap partie"); const s = document.createElement("summary"); s.append(el("b", "", "Autres notions")); c.append(s); reste.forEach(n => c.append(notionIA(n))); box.append(c); }
@@ -2739,21 +2926,49 @@ function renderIA(a) {
 }
 function notionIA(n) {
   const d = el("div", "nia" + (n.importance === "essentielle" ? " ess" : ""));
-  const h = el("div", "row"); h.append(el("b", "", n.terme)); if (n.importance === "essentielle") h.append(el("span", "chip imp", "Essentiel")); if (n.ajout_hors_notes) h.append(el("span", "chip", "Complété par l'IA"));
-  d.append(h, el("p", "", n.definition)); if (n.explication) d.append(el("p", "muted", n.explication)); if (n.exemple) d.append(el("p", "ex", "Exemple : " + n.exemple));
+  const h = el("div", "row"); h.append(el("b", "", n.terme));
+  if (n.importance === "essentielle") h.append(el("span", "chip imp", "Essentiel")); else if (n.importance === "secondaire") h.append(el("span", "chip", "Secondaire"));
+  if (n.attendu) h.append(el("span", "chip q", IA_ATTENDU[n.attendu] || n.attendu));
+  if (n.ajout_hors_notes) h.append(el("span", "chip", "Complété par l'IA"));
+  d.append(h);
+  if (n.a_retenir) d.append(el("p", "", "À retenir : " + n.a_retenir)); else d.append(el("p", "", n.definition));
+  if (n.explication) d.append(el("p", "muted", n.explication));
+  if (n.exemple) d.append(el("p", "ex", "Exemple : " + n.exemple));
+  if (n.aide) { const m = el("details", "aide-ia"); const s = document.createElement("summary"); s.append(el("b", "", "📘 Pour l'apprendre : " + ((C_IA.NOMS_METHODE || {})[n.methode] || "méthode"))); m.append(s, el("p", "aide-txt", n.aide)); d.append(m); }
+  if ((n.confusions || []).length) d.append(el("p", "muted", "⚠ Ne pas confondre : " + n.confusions.map(c => c.avec + " (" + c.difference + ")").join(" · ")));
+  const dn = db.notions.find(z => z.ia && nk(z.ia.terme) === nk(n.terme) && !z.off);
+  if (dn && NP) { const b = NP.besoin(dn), dg = dn.diags && dn.diags[dn.diags.length - 1]; d.append(el("p", "muted", "Pour toi : " + b.l + (dg && !dg.resolu && C_IA.NOMS_CAUSE[dg.cause] ? " · dernière erreur : " + C_IA.NOMS_CAUSE[dg.cause].toLowerCase() : ""))); }
   return d;
 }
 $("cp-src").addEventListener("change", () => { cpSel = $("cp-src").value; renderComprendre(); });
+/* Lancer l'analyse d'un cours, avec le temps qui passe et l'étape en cours. ecrire(texte) affiche où on en est. */
+var iaEnCours = null;
+async function iaLancer(src, ecrire) {
+  if (iaEnCours) throw new Error("Une analyse est déjà en cours. Attends qu'elle finisse.");
+  if (src.text.length > (iaVoie() === "compte" ? TEXTE_MAX_COMPTE : 400000)) throw new Error("Ce cours est très long. Coupe-le en plusieurs cours avant de l'analyser.");
+  let etape = "Notéa lit ton cours…"; const t0 = Date.now(), tic = setInterval(() => ecrire(`${etape} ${Math.round((Date.now() - t0) / 1000)} s`), 1000);
+  iaEnCours = src.key;
+  try { return await iaAnalyser(src, t => { etape = t; ecrire(t); }); } finally { clearInterval(tic); iaEnCours = null; }
+}
+const iaBilan = a => `${a.data.notions.length} notions (${a.data.notions.filter(n => n.importance === "essentielle").length} essentielles), ${(a.data.questions || []).length} questions d'entraînement` + (a.cout ? ` · ${a.cout} crédits` : a.prix ? ` · ${fmtPrix(a.prix)}` : "");
 $("cp-go").addEventListener("click", async () => {
   const src = iaSources().find(x => x.key === cpSel); if (!src) return;
-  if (src.text.length > (iaVoie() === "compte" ? TEXTE_MAX_COMPTE : 400000)) { note("Ce cours est très long. Coupe-le en plusieurs cours avant de l'analyser.", "warn"); return; }
-  const b = $("cp-go"); b.disabled = true; $("cp-info").textContent = "L'IA lit ton cours… (de 20 secondes à 2 minutes)";
-  const t0 = Date.now(), tic = setInterval(() => { $("cp-info").textContent = `L'IA lit et organise ton cours… ${Math.round((Date.now() - t0) / 1000)} s`; }, 1000);
-  try { const a = await iaAnalyser(src);
-    note(`Cours compris : ${a.data.plan.length} parties, ${a.data.notions.length} notions, ${a.data.questions.length} questions de quiz (${a.cout ? a.cout + " crédits" : fmtPrix(a.prix)}).`, "ok"); }
+  const b = $("cp-go"); b.disabled = true;
+  try { const a = await iaLancer(src, t => { $("cp-info").textContent = t; }); note("Cours compris : " + iaBilan(a) + ".", "ok"); renderToday(); }
   catch (e) { note(iaErreur(e), "err"); }
-  clearInterval(tic); b.disabled = false; renderComprendre();
+  b.disabled = false; renderComprendre();
 });
+/* Après l'import : connecté, l'IA comprend le cours toute seule (rien à choisir). */
+function iaAuto() { const p = compte && compte.profil; return iaVoie() === "compte" && p && p.consentement_le && p.credits >= COUT_ANALYSE; }
+async function iaApprofondir(coursId, box) {
+  const src = iaSources().find(x => x.key === coursId); if (!src) return;
+  const ligne = el("p", "msg ok"); ligne.setAttribute("role", "status"); box.append(ligne);
+  try { const a = await iaLancer(src, t => { ligne.textContent = "✨ " + t; });
+    ligne.textContent = "✨ L'IA a compris ton cours : " + iaBilan(a) + ". Tes notions sont prêtes.";
+    const v = el("button", "", "Voir ce qu'il faut retenir"); v.addEventListener("click", () => { cpSel = coursId; tab("comprendre"); }); ligne.append(" ", v);
+    renderList(); renderToday(); }
+  catch (e) { ligne.className = "msg warn"; ligne.textContent = "L'IA n'a pas pu analyser ce cours maintenant : " + iaErreur(e) + " Tu peux réessayer dans « Comprendre ». Tes notions sont quand même prêtes."; }
+}
 
 /* ---------- Paramètres : la clé et le modèle ---------- */
 function renderIAReglages() {
@@ -2778,10 +2993,18 @@ function cqItems(m, ch) {
 /* Le prof particulier connaît le plan et les notions expliquées. */
 function iaContexte(m) {
   const as = iaAnalyses(m); if (!as.length) return "";
-  return as.map(a => `\n\nLe cours « ${a.data.titre || a.mat} » compris par Notéa :\nRésumé : ${a.data.resume}\nPlan : ${(a.data.plan || []).map(p => p.titre + (p.sous_parties || []).map(s => " / " + s.titre).join("")).join(" ; ")}\nNotions :\n` +
-    (a.data.notions || []).slice(0, 30).map(n => `- ${n.terme} (${n.partie}) : ${n.definition}`).join("\n")).join("");
+  // v2.2 : pour chaque notion, l'essentiel, la méthode conseillée, les confusions et les difficultés de l'élève
+  const v2 = as.filter(a => a.v === 2), v1 = as.filter(a => a.v !== 2);
+  const lignes = db.notions.filter(n => n.ia && !n.off && (!m || matOf(n) === m) && v2.some(a => db.ia[n.ia.key] === a)).map(n => {
+    const b = NP ? NP.besoin(n).l : "", dg = (n.diags || []).filter(x => !x.resolu).map(x => (C_IA.NOMS_CAUSE[x.cause] || x.cause) + (x.avec ? " avec « " + x.avec + " »" : ""));
+    return `- ${n.ia.terme} (${IA_ATTENDU[n.ia.attendu] || ""}) : ${n.ia.retenir || n.text}\n  Méthode conseillée : ${(C_IA.NOMS_METHODE || {})[n.ia.methode] || n.ia.methode} — ${String(n.ia.aide || "").slice(0, 400)}` +
+      (n.ia.confusions.length ? `\n  Confusions : ${n.ia.confusions.join(" ; ")}` : "") + `\n  L'élève : ${b}` + (n.errs ? `, ${n.errs} erreur(s)` : "") + (dg.length ? `, difficultés : ${[...new Set(dg)].join(", ")}` : "");
+  });
+  const t2 = v2.length ? v2.map(a => `\n\nLe cours « ${a.data.titre || a.mat} ». But : ${a.data.objectif || ""}\nRésumé : ${a.data.resume}`).join("") + "\n\nNotions, méthodes et difficultés de l'élève :\n" + lignes.join("\n") : "";
+  return t2 + (v1.length ? v1.map(a => `\n\nLe cours « ${a.data.titre || a.mat} » compris par Notéa :\nRésumé : ${a.data.resume}\nPlan : ${(a.data.plan || []).map(p => p.titre + (p.sous_parties || []).map(s => " / " + s.titre).join("")).join(" ; ")}\nNotions :\n` +
+    (a.data.notions || []).slice(0, 30).map(n => `- ${n.terme} (${n.partie}) : ${n.definition}`).join("\n")).join("") : "");
 }
-Object.assign(SUBS, {comprendre: "Le plan de ton cours et ses notions, expliqués simplement."});
+Object.assign(SUBS, {comprendre: "Ce qu'il faut retenir, comment l'apprendre, et tes questions d'entraînement."});
 
 /* =====================================================================
    Version 1.8 : le compte Notéa. L'IA marche sans clé : le serveur de Notéa (Supabase) la garde.
@@ -3347,10 +3570,13 @@ function notionsParId() { return new Map(db.notions.map(n => [n.id, n])); }
 
 /* ---------- L'import construit le parcours tout seul ---------- */
 function holesAt(text, term) {
-  const t = tokens(text), low = text.toLowerCase(), i = low.indexOf(String(term).toLowerCase()); if (i < 0) return [];
-  const out = []; let c = 0, fin = i + term.length;
-  t.forEach((w, k) => { const a = c, b = c + w.length; c = b; if (/^\s*$/.test(w)) return; if (b > i && a < fin) out.push(k); });
-  return out.slice(0, 4);
+  // v2.4 : le mot est caché à chaque fois qu'il revient (avant, seulement la 1re fois : la 2e donnait la réponse).
+  const t = tokens(text), low = text.toLowerCase(), tl = String(term).toLowerCase().trim(); if (!tl) return [];
+  const zones = []; for (let i = low.indexOf(tl); i >= 0 && zones.length < 6; i = low.indexOf(tl, i + tl.length)) zones.push([i, i + tl.length]);
+  if (!zones.length) return [];
+  const out = []; let c = 0;
+  t.forEach((w, k) => { const a = c, b = c + w.length; c = b; if (/^\s*$/.test(w)) return; if (zones.some(([i, fin]) => b > i && a < fin)) out.push(k); });
+  return out.slice(0, 10);
 }
 function creerDepuisAnalyse(mat, analyseMoteur, coursId) {
   if (!NP || !analyseMoteur) return null;
@@ -3385,9 +3611,11 @@ function importAuto() {
   b2.addEventListener("click", () => { box.hidden = true; nMat = mat; nFilter = "tout"; tab("notes"); });
   b3.addEventListener("click", () => { box.hidden = true; autoPick(); $("pick-card").hidden = false; $("pick-card").scrollIntoView({block: "start", behavior: "smooth"}); });
   a.append(b1, b2, b3);
-  if (typeof iaVoie === "function" && iaVoie()) { const b4 = el("button", "", "✨ Approfondir avec l'IA"); b4.addEventListener("click", () => { box.hidden = true; tab("comprendre"); }); a.append(b4); }
+  const auto = c && typeof iaAuto === "function" && iaAuto();   // v2.2 : connecté, l'IA approfondit toute seule
+  if (!auto && typeof iaVoie === "function" && iaVoie()) { const b4 = el("button", "", "✨ Approfondir avec l'IA"); b4.addEventListener("click", () => { box.hidden = true; tab("comprendre"); }); a.append(b4); }
   box.append(a); box.hidden = false; $("imp-text").value = ""; impPhoto = false; impOpen = false;
   box.scrollIntoView({block: "start", behavior: "smooth"});
+  if (auto) iaApprofondir(c.id, box);
   return true;
 }
 

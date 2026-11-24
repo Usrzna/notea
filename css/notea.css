@@ -643,3 +643,6 @@ body.zen .page-masc{display:none!important}
 .tb-pb{display:flex;justify-content:space-between;align-items:center;gap:var(--space-3);padding:var(--space-2) 0;border-top:1px solid var(--line)}
 .mes-next{font-size:13px;font-weight:800;color:var(--accent-text);margin-left:6px}
 @media (max-width:700px){.tb-g{grid-template-columns:1fr 1fr}}
+/* v2.2 : l'IA, pour apprendre chaque notion */
+.aide-ia{margin-top:4px}.aide-ia summary{cursor:pointer}.aide-txt{white-space:pre-wrap;background:var(--surface-2);border-radius:var(--radius-sm);padding:8px 12px;margin:6px 0 0}
+#qc-rep{font:inherit;font-size:18px;line-height:1.5;padding:10px 12px;border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:var(--surface);color:var(--text);resize:vertical}

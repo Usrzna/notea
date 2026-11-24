@@ -76,7 +76,7 @@ export class ErreurEleve extends Error {}
 
 // Si le modèle choisi est saturé, lent ou absent, on essaie le suivant (tous dans l'offre gratuite).
 // Mesuré le 22/11/2026 : gemini-3.5-flash répond en 10 s ; 3.1-flash-lite en 16 s ; les autres étaient souvent saturés.
-const SECOURS = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-flash-lite-latest"];
+const SECOURS = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.8-flash", "gemini-flash-lite-latest"];   // chaque modèle a son propre quota gratuit
 const PAR_MODELE = 60_000;   // un modèle trop lent ne mange pas tout le temps : on passe au suivant
 
 /** Le schéma JSON standard, traduit pour l'ancien format de Gemini (sans additionalProperties, types en majuscules). */
@@ -95,21 +95,97 @@ function versSchemaGemini(s: any): any {
   return o;
 }
 
-/** Un appel à Gemini. Renvoie le texte et la taille (en jetons). */
-export async function appelIA(cle: string, p: {
+type Demande = {
   model: string; system: string; messages: { role: "user" | "assistant"; content: string }[];
   maxTokens: number; schema?: Record<string, unknown>;
-}) {
-  const modeles = [p.model, ...SECOURS.filter((m) => m !== p.model)];
+  reflexion?: "low" | "medium" | "high";   // profondeur de réflexion de Gemini
+  secours?: string[];                       // modèles de secours (l'analyse refuse les modèles « lite », trop faibles)
+  parModele?: number;                       // temps max pour un modèle avant de passer au suivant
+  forcer?: "groq";                          // pour les tests : passer directement par Groq
+};
+const trop = () => new ErreurEleve("L'IA a mis trop de temps. Réessaie dans un moment, ou avec un cours plus court. Tes crédits sont rendus.");
+
+/** Un appel à l'IA : Gemini d'abord ; si Google est saturé, lent ou à court de quota, Groq prend le relais (v2.4).
+ *  Renvoie le texte et la taille (en jetons). */
+export async function appelIA(cle: string, p: Demande) {
+  const groq = Deno.env.get("GROQ_API_KEY"), fin = Date.now() + 135_000;   // une Edge Function gratuite est coupée à 150 s
+  if (p.forcer === "groq" && groq) return await appelGroq(groq, p, fin);
+  try {
+    // S'il y a Groq, on garde 45 s pour lui au cas où Gemini ne répond pas.
+    return await appelGemini(cle, p, groq ? fin - 45_000 : fin);
+  } catch (e) {
+    if (!groq || (e instanceof ErreurEleve && !/très demandée|trop de temps/.test(e.message))) throw e;   // refus, cours trop long… : Groq ne ferait pas mieux
+    console.warn("gemini en échec, Groq prend le relais :", (e as Error).message);
+    return await appelGroq(groq, p, fin);
+  }
+}
+
+/* ---------- Groq (secours, offre gratuite) : API compatible OpenAI ---------- */
+const GROQ_PREF = ["openai/gpt-oss-120b", "moonshotai/kimi-k2-instruct", "llama-3.3-70b-versatile", "qwen/qwen3-32b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"];
+let groqModeles: string[] | null = null;
+async function modelesGroq(cle: string) {
+  if (groqModeles) return groqModeles;
+  try {
+    const r = await fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: "Bearer " + cle }, signal: AbortSignal.timeout(8000) });
+    // deno-lint-ignore no-explicit-any
+    const ids: string[] = ((await r.json()).data || []).map((m: any) => m.id);
+    groqModeles = GROQ_PREF.filter((m) => ids.includes(m));
+    if (!groqModeles.length) groqModeles = ids.filter((id) => /gpt-oss|llama|qwen|kimi/i.test(id) && !/guard|whisper|tts|vision|prompt/i.test(id)).slice(0, 3);
+  } catch { groqModeles = GROQ_PREF.slice(0, 3); }
+  return groqModeles;
+}
+async function appelGroq(cle: string, p: Demande, fin: number) {
+  const system = p.system + (p.schema ? "\n\nRéponds uniquement avec un objet JSON valide, qui suit exactement ce schéma JSON (tous les champs) :\n" + JSON.stringify(p.schema) : "");
+  const messages = [{ role: "system", content: system }, ...p.messages];
+  let derniere = "", sature = false;
+  for (const model of await modelesGroq(cle)) {
+    for (const forme of p.schema ? ["schema", "objet"] : ["texte"]) {
+      const reste = fin - Date.now();
+      if (reste < 5_000) throw trop();
+      const body: Record<string, unknown> = { model, messages, max_completion_tokens: Math.min(p.maxTokens, 32_000), temperature: 0.3 };
+      if (forme === "schema") body.response_format = { type: "json_schema", json_schema: { name: "reponse", schema: p.schema, strict: false } };
+      if (forme === "objet") body.response_format = { type: "json_object" };
+      let r: Response;
+      try {
+        r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + cle }, body: JSON.stringify(body), signal: AbortSignal.timeout(reste),
+        });
+      } catch (e) {
+        if (e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError")) throw trop();
+        throw e;
+      }
+      // deno-lint-ignore no-explicit-any
+      const j: any = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        derniere = `groq ${model} ${r.status} ${j?.error?.message || ""}`;
+        console.warn(derniere);
+        if (r.status === 400 && forme === "schema") continue;                        // ce modèle ne connaît pas json_schema : JSON simple
+        if (r.status === 429 || r.status === 413 || r.status === 503) sature = true;
+        if (r.status === 400 || r.status === 404 || r.status === 413 || r.status === 429 || r.status >= 500) break;   // modèle suivant
+        throw new Error(derniere);
+      }
+      const c = j.choices?.[0];
+      if (!c || !c.message) throw new ErreurEleve("L'IA a refusé cette demande. Tes crédits sont rendus.");
+      if (c.finish_reason === "length") throw new ErreurEleve("Le cours est trop long pour une seule analyse. Coupe-le en deux cours. Tes crédits sont rendus.");
+      const u = j.usage || {};
+      return { text: String(c.message.content || ""), tIn: u.prompt_tokens || 0, tOut: u.completion_tokens || 0, modele: "groq:" + model };
+    }
+  }
+  if (sature) throw new ErreurEleve("L'IA gratuite de Notéa est très demandée en ce moment. Réessaie dans quelques minutes. Tes crédits sont rendus.");
+  throw new Error(derniere || "aucun modèle Groq");
+}
+
+/** Un appel à Gemini. */
+async function appelGemini(cle: string, p: Demande, fin: number) {
+  const modeles = [p.model, ...(p.secours || SECOURS).filter((m) => m !== p.model)];
+  const reflexion = { thinkingConfig: { thinkingLevel: p.reflexion || "low" } }, parModele = p.parModele || PAR_MODELE;
   const contents = p.messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] }));
-  const fin = Date.now() + 135_000;   // une Edge Function gratuite est coupée à 150 s
-  const trop = () => new ErreurEleve("L'IA a mis trop de temps. Réessaie dans un moment, ou avec un cours plus court. Tes crédits sont rendus.");
   // Les formes essayées, de la meilleure à la plus simple : si Google refuse un réglage (erreur 400), on essaie le suivant.
   const formes: Record<string, unknown>[] = p.schema
-    ? [{ responseMimeType: "application/json", responseJsonSchema: p.schema, thinkingConfig: { thinkingLevel: "low" } },
+    ? [{ responseMimeType: "application/json", responseJsonSchema: p.schema, ...reflexion },
        { responseMimeType: "application/json", responseJsonSchema: p.schema },
        { responseMimeType: "application/json", responseSchema: versSchemaGemini(p.schema) }]
-    : [{ thinkingConfig: { thinkingLevel: "low" } }, {}];
+    : [{ ...reflexion }, {}];
   let derniere = "", sature = false;
   for (const model of modeles) {
     for (const forme of formes) {
@@ -121,7 +197,7 @@ export async function appelIA(cle: string, p: {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": cle },
           body: JSON.stringify({ systemInstruction: { parts: [{ text: p.system }] }, contents, generationConfig: { maxOutputTokens: p.maxTokens, ...forme } }),
-          signal: AbortSignal.timeout(Math.min(reste, PAR_MODELE)),
+          signal: AbortSignal.timeout(Math.min(reste, parModele)),
         });
       } catch (e) {
         if (e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError")) { derniere = model + " trop lent"; console.warn("gemini", derniere); break; }
