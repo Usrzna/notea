@@ -1316,7 +1316,7 @@ function tab(name, fromNav) {
   if (name === "discu") { fillMats($("dc-mat")); dcEngine().then(e => { $("dc-chip").textContent = e === "builtin" ? "IA sur l'appareil" : e === "api" ? (iaVoie() === "compte" ? "IA : mon compte Notéa" : "IA : Claude (clé)") : "IA : via Claude.ai"; }); }
   if (["blanche", "jeux", "trous", "cartes", "examen", "carte", "planning", "lecture", "carnet"].includes(name)) useTool(name);
   if (name === "blanche") { fbFill(); fbStart(); }
-  if (name === "jeux") { fillMats($("jx-mat")); fillChapSel($("jx-chap"), $("jx-mat").value); }
+  if (name === "jeux") { fillMats($("jx-mat")); fillChapSel($("jx-chap"), $("jx-mat").value); renderVocab(); }
   if (name === "trous") fillMats($("tr-mat"));
   if (name === "cartes") renderCartes();
   fillDL();
@@ -1619,7 +1619,7 @@ $("data-del").addEventListener("click", () => {
 /* =====================================================================
    Moins de friction, plus de rappel actif.
    ===================================================================== */
-const VERSION = "2.4";
+const VERSION = "2.5";
 
 /* ---------- Un message avec « Annuler » : on peut se tromper sans risque ---------- */
 function noteUndo(t, fn) {
@@ -2061,6 +2061,7 @@ function cqAnswer(i) {
   if (x.text && x.holes && (!x.last || x.due <= now)) { if (!x.last) db.newToday++; schedule(x, good ? 2 : 1, now); }
   if (x.text && COMP_T.has(q.t === "moteur" ? "moteur" : q.t)) { x.cp = x.cp || {n: 0, ok: 0}; x.cp.n++; if (good) x.cp.ok++; x.cp.last = now; }   // la compréhension se mesure à part
   if (x.text) suivre(x, q.t, good ? 1 : 0, {choix: good ? null : c.a, now});
+  if (x.voc) { db.voc = db.voc || {}; const sv = db.voc[x.cle] || {n: 0, ok: 0}; sv.n++; if (good) sv.ok++; sv.last = now; sv.bon = good; db.voc[x.cle] = sv; }   // v2.5
   if (x.iq) iaSuivre(x, good ? 1 : 0, {confusion: good ? null : c.a, cause: good ? "aucune" : "confusion"});   // v2.2 : la notion de l'IA suit la réponse
   save(); if (onceToday("cq" + (x.id || q.text))) gainN(1, "quiz");
   cqBack(q, c, good); $("qc-turn").hidden = false;
@@ -2072,7 +2073,8 @@ function cqBack(q, c, good) {
   const line = (lab, txt, cls) => { const d = el("div", "ansline " + cls); d.append(el("small", "", lab), el("b", "", txt)); return d; };
   const box = $("qc-ans"); box.replaceChildren(); if (!good) box.append(line("Ta réponse", c.a, "mine")); box.append(line("La bonne réponse", q.good, "good"));
   const w = $("qc-why"); w.replaceChildren(el("b", "", "Pourquoi ?")); const p = t => w.append(el("div", "", t));
-  if (x.iq) iaPourquoi(q, c, good, p);
+  if (x.voc) { if (!good && c.why) p(c.why); p("À retenir : " + x.back); }   // v2.5 : vocabulaire
+  else if (x.iq) iaPourquoi(q, c, good, p);
   else if (x.mq) moteurPourquoi(x, c, good, p);
   else if (x.text) {
     const f = factOf(x);
@@ -2158,8 +2160,8 @@ $("qc-turn").addEventListener("click", () => { flipTo("qc-flip", true); $("qc-ne
 $("qc-quit").addEventListener("click", () => { if (cq) cqEnd(); });
 $("qc-lire").addEventListener("click", () => { const q = cq && cq.list[cq.i]; if (q) speak(q.text + (q.quote ? ". " + q.quote : "") + ". " + q.choices.map((c, i) => "Réponse " + "ABCDE"[i] + " : " + c.a).join(". ")); });
 $("qc-lire2").addEventListener("click", () => speak($("qc-verdict").textContent.replace(/[✓✗]/g, "") + ". " + $("qc-ans").textContent + ". " + $("qc-why").textContent));
-$("jx-miss").addEventListener("click", () => { if (cq && cq.miss.length) cqStart(cq.miss.slice()); });
-$("jx-mat").addEventListener("change", () => fillChapSel($("jx-chap"), $("jx-mat").value));
+$("jx-miss").addEventListener("click", () => { if (cq && cq.miss.length) { if (cq.voc) vocRevoir(); else cqStart(cq.miss.slice()); } });
+$("jx-mat").addEventListener("change", () => { fillChapSel($("jx-chap"), $("jx-mat").value); renderVocab(); });
 document.addEventListener("keydown", e => {
   if ($("tab-jeux").hidden || $("qc").hidden || !cq || cq.answered || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
   const i = Number(e.key) - 1; if (i >= 0 && i < cq.list[cq.i].choices.length) { e.preventDefault(); cqAnswer(i); }
@@ -3747,6 +3749,48 @@ function majQuestionsControle() {
   save(); setTimeout(majQuestionsControle, 400);
 }
 setTimeout(majQuestionsControle, 1500);
+
+/* =====================================================================
+   Version 2.5 : le quiz Vocabulaire. Un mot, sa définition. Un quiz par partie du cours.
+   Les mots viennent du cours lui-même (js/vocabulaire.js) : lignes « Mot : définition », tableaux « Terme | Définition ».
+   Pas d'IA, rien à attendre. Les mauvais choix sont d'autres définitions de la même partie.
+   ===================================================================== */
+var NV = window.NoteaVocab;
+function vocabDe(m) {
+  if (!NV) return [];
+  const out = [], vus = new Set();
+  (db.cours || []).forEach(c => { if (m && (c.mat || "Cours") !== m) return;
+    NV.extraire(c.text).forEach(v => { const k = norm((c.mat || "") + "|" + v.mot); if (vus.has(k)) return; vus.add(k); out.push(Object.assign(v, {mat: c.mat || "Cours"})); }); });
+  return out;
+}
+const vocCle = v => norm(v.mat + "|" + v.mot);
+function renderVocab() {
+  const box = $("voc-parts"); if (!box) return; box.replaceChildren();
+  const m = $("jx-mat").value, L = vocabDe(m); $("voc-vide").hidden = !!L.length; if (!L.length) return;
+  const su = v => { const s = (db.voc || {})[vocCle(v)]; return s && s.bon ? 1 : 0; };   // mot réussi la dernière fois
+  const tout = el("button", "primary", `Tout le vocabulaire · ${L.length} mots`); tout.addEventListener("click", () => vocQuiz(L, L)); box.append(tout);
+  const groupes = new Map(); L.forEach(v => { const k = (m ? "" : v.mat + " · ") + (v.partie || "Début du cours"); if (!groupes.has(k)) groupes.set(k, []); groupes.get(k).push(v); });
+  groupes.forEach((vs, k) => { const ok = vs.filter(su).length;
+    const b = el("button", "", `${k} · ${vs.length} mot${vs.length > 1 ? "s" : ""}` + (ok ? ` · ✓ ${ok}` : "")); b.addEventListener("click", () => vocQuiz(vs, L)); box.append(b); });
+}
+var vocDernier = null;
+function vocQuiz(liste, tous) {
+  vocDernier = {liste, tous};
+  const st = v => (db.voc || {})[vocCle(v)];
+  // d'abord les mots jamais vus, puis ratés, puis réussis ; 20 au plus
+  const rang = v => { const s = st(v); return !s ? 0 : s.bon ? 2 : 1; };
+  const choisis = shuffle(liste.slice()).sort((a, b) => rang(a) - rang(b)).slice(0, 20);
+  const qs = NV.questions(choisis, tous).filter(q => q.mauvaises.length >= 2).map(q => ({t: "vocab", quote: q.citation, text: q.texte, good: q.bonne,
+    tag: q.v.qa ? "Question de cours" : q.sens === "mot" ? "Retrouve le mot" : "Vocabulaire", opts: q.mauvaises.map(o => ({a: o.a, why: o.pourquoi})),
+    x: {voc: true, cle: vocCle(q.v), mat: q.v.mat, chap: q.v.partie, front: q.texte + (q.citation ? " « " + q.citation + " »" : ""), back: q.v.mot + " : " + q.v.def, qz: {n: 0, ok: 0, last: 0}}}));
+  if (!qs.length) { note("Il faut au moins 3 mots pour faire un quiz.", "warn"); return; }
+  cq = {list: qs, i: 0, ok: 0, miss: [], voc: true}; $("jx-end").hidden = true; $("mt").hidden = true; $("qc").hidden = false; cqShow();
+  $("qc").scrollIntoView({block: "start", behavior: "smooth"});
+}
+function vocRevoir() {   // « Revoir mes erreurs » : seulement les mots ratés
+  if (!vocDernier) return; const rates = new Set(cq.miss.map(x => x.cle));
+  vocQuiz(vocDernier.tous.filter(v => rates.has(vocCle(v))), vocDernier.tous);
+}
 
 /* ---------- Le bouton « retour » du navigateur marche, et la page ouverte est gardée ---------- */
 window.addEventListener("popstate", () => tab(TABS[location.hash.slice(1)] ? location.hash.slice(1) : "jour", true));
